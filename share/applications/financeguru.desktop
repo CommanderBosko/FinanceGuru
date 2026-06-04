@@ -1,8 +1,9 @@
+#!/usr/bin/env xdg-open
 [Desktop Entry]
 Name=Finance Guru
 Comment=Personal finance tracker
 Exec=financeguru
-Icon=utilities-finance
+Icon=financeguru
 Terminal=false
 Type=Application
 Categories=Office;Finance;
