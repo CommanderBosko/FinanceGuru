@@ -42,4 +42,18 @@ def init_db() -> None:
                 purchase_date   TEXT    NOT NULL,
                 notes           TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS stock_tips (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker          TEXT    NOT NULL,
+                action          TEXT    NOT NULL DEFAULT 'Watch',
+                target_price    REAL,
+                confidence      INTEGER NOT NULL DEFAULT 3,
+                notes           TEXT,
+                added_date      TEXT    NOT NULL,
+                analyst_action  TEXT,
+                analyst_target  REAL,
+                analyst_count   INTEGER,
+                analyst_updated TEXT
+            );
         """)
