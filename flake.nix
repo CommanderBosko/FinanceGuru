@@ -13,6 +13,7 @@
 
     pythonDeps = ps: with ps; [
       pyside6
+      yfinance
     ];
   in {
     packages.${system}.default = python.pkgs.buildPythonApplication {
@@ -25,6 +26,8 @@
         python.pkgs.setuptools
         pkgs.qt6.wrapQtAppsHook
       ];
+
+      buildInputs = [ pkgs.qt6.qtbase ];
 
       propagatedBuildInputs = pythonDeps python.pkgs;
 

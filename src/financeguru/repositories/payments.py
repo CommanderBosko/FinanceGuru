@@ -26,3 +26,14 @@ def add(payment: Payment) -> int | None:
 def delete(payment_id: int) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM payments WHERE id=?", (payment_id,))
+
+
+def get_paid_bill_ids_for_month(year: int, month: int) -> set[int]:
+    prefix = f"{year}-{month:02d}-"
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT bill_id FROM payments"
+            " WHERE paid_date LIKE ? AND bill_id IS NOT NULL",
+            (prefix + "%",),
+        ).fetchall()
+    return {row["bill_id"] for row in rows}
