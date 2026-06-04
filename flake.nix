@@ -31,6 +31,11 @@
 
       propagatedBuildInputs = pythonDeps python.pkgs;
 
+      postInstall = ''
+        install -Dm644 share/applications/financeguru.desktop \
+          $out/share/applications/financeguru.desktop
+      '';
+
       meta = {
         description = "Personal finance desktop app";
         mainProgram = "financeguru";
