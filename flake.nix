@@ -37,11 +37,14 @@
     devShells.${system}.default = pkgs.mkShell {
       packages = [
         (python.withPackages (ps: (pythonDeps ps) ++ [ ps.pytest ]))
+        pkgs.adwaita-icon-theme
+        pkgs.hicolor-icon-theme
       ];
 
       shellHook = ''
         export QT_QPA_PLATFORM="wayland;xcb"
+        export PYTHONPATH="$PWD/src:$PYTHONPATH"
+        export XDG_DATA_DIRS="${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:$XDG_DATA_DIRS"
       '';
-    };
   };
 }
