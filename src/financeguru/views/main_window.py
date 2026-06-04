@@ -9,7 +9,7 @@ from financeguru.views.stocks_view import StocksView
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FinanceGuru")
+        self.setWindowTitle("Finance Guru")
         self.resize(1100, 720)
 
         self._dashboard = DashboardView()
