@@ -1,0 +1,116 @@
+from dataclasses import dataclass
+from datetime import date
+
+from financeguru.models.debt import Debt
+
+_MAX_MONTHS = 600
+
+
+@dataclass
+class DebtResult:
+    name: str
+    original_balance: float
+    apr: float
+    minimum_payment: float
+    payoff_month: int
+    interest_paid: float
+
+
+@dataclass
+class PayoffPlan:
+    strategy: str
+    debt_results: list[DebtResult]   # sorted by payoff order
+    total_months: int
+    total_interest: float
+    capped: bool                     # True if simulation hit the 600-month limit
+
+
+def calculate(debts: list[Debt], extra: float) -> tuple[PayoffPlan, PayoffPlan]:
+    snowball = _simulate("Snowball", sorted(debts, key=lambda d: d.balance), extra)
+    avalanche = _simulate("Avalanche", sorted(debts, key=lambda d: -d.interest_rate), extra)
+    return snowball, avalanche
+
+
+def payoff_date(payoff_month: int) -> str:
+    today = date.today()
+    total = today.month - 1 + payoff_month
+    year = today.year + total // 12
+    month = total % 12 + 1
+    return date(year, month, 1).strftime("%b %Y")
+
+
+def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
+    if not ordered:
+        return PayoffPlan(strategy=strategy, debt_results=[], total_months=0,
+                          total_interest=0.0, capped=False)
+
+    states = [
+        {"debt": d, "balance": d.balance, "interest_paid": 0.0, "payoff_month": None}
+        for d in ordered
+    ]
+    rolling_extra = max(0.0, extra)
+    month = 0
+    capped = False
+
+    while month < _MAX_MONTHS:
+        month += 1
+
+        # Accrue monthly interest on each active debt
+        for s in states:
+            if s["balance"] > 0:
+                interest = s["balance"] * (s["debt"].interest_rate / 100.0 / 12.0)
+                s["balance"] += interest
+                s["interest_paid"] += interest
+
+        # Pay minimum on each active debt
+        for s in states:
+            if s["balance"] > 0:
+                pay = min(s["balance"], s["debt"].minimum_payment)
+                s["balance"] = max(0.0, s["balance"] - pay)
+
+        # Roll extra toward the highest-priority unpaid debt
+        remaining = rolling_extra
+        for s in states:
+            if s["balance"] <= 0 or remaining <= 0:
+                continue
+            pay = min(s["balance"], remaining)
+            s["balance"] = max(0.0, s["balance"] - pay)
+            remaining -= pay
+
+        # Mark paid-off debts and grow rolling extra
+        for s in states:
+            if s["balance"] < 0.01 and s["payoff_month"] is None:
+                s["balance"] = 0.0
+                s["payoff_month"] = month
+                rolling_extra += s["debt"].minimum_payment
+
+        if all(s["balance"] == 0 for s in states):
+            break
+    else:
+        capped = True
+        for s in states:
+            if s["payoff_month"] is None:
+                s["payoff_month"] = _MAX_MONTHS
+
+    results = sorted(
+        [
+            DebtResult(
+                name=s["debt"].name,
+                original_balance=s["debt"].balance,
+                apr=s["debt"].interest_rate,
+                minimum_payment=s["debt"].minimum_payment,
+                payoff_month=s["payoff_month"],
+                interest_paid=round(s["interest_paid"], 2),
+            )
+            for s in states
+        ],
+        key=lambda r: r.payoff_month,
+    )
+
+    return PayoffPlan(
+        strategy=strategy,
+        debt_results=results,
+        total_months=month,
+        total_interest=round(sum(r.interest_paid for r in results), 2),
+        capped=capped,
+    )

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QMainWindow, QTabWidget
 
 from financeguru.views.bills_view import BillsView
 from financeguru.views.dashboard_view import DashboardView
+from financeguru.views.debt_snowball_view import DebtSnowballView
 from financeguru.views.payments_view import PaymentsView
 from financeguru.views.stock_tips_view import StockTipsView
 from financeguru.views.stocks_view import StocksView
@@ -30,6 +31,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(PaymentsView(), "Payments")
         self._tabs.addTab(StocksView(), "Stocks")
         self._tabs.addTab(StockTipsView(), "Stock Tips")
+        self._tabs.addTab(DebtSnowballView(), "Debt Snowball")
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self._tabs)

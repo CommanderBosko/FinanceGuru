@@ -43,6 +43,15 @@ def init_db() -> None:
                 notes           TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS debts (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT    NOT NULL,
+                balance         REAL    NOT NULL,
+                interest_rate   REAL    NOT NULL,
+                minimum_payment REAL    NOT NULL,
+                notes           TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS stock_tips (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker          TEXT    NOT NULL,
