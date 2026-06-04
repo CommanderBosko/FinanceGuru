@@ -46,5 +46,6 @@
         export PYTHONPATH="$PWD/src:$PYTHONPATH"
         export XDG_DATA_DIRS="${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:$XDG_DATA_DIRS"
       '';
+    };
   };
 }
