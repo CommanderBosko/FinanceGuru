@@ -40,7 +40,7 @@
       ];
 
       shellHook = ''
-        export QT_QPA_PLATFORM=wayland;xcb
+        export QT_QPA_PLATFORM="wayland;xcb"
       '';
     };
   };
