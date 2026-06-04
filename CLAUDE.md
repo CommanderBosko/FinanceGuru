@@ -39,16 +39,18 @@ nix flake update
 ```
 src/financeguru/
 ├── main.py          # Entry point — init_db(), QApplication, MainWindow
-├── db.py            # SQLite connection, schema creation (init_db)
+├── db.py            # SQLite connection + schema (init_db); row_factory=sqlite3.Row
 ├── models/          # Plain dataclasses: Bill, Payment, Stock
+├── repositories/    # DB access layer — one module per model (bills, payments, stocks)
 └── views/
     ├── main_window.py   # QMainWindow with QTabWidget (Bills / Payments / Stocks)
-    ├── bills_view.py
+    ├── bill_dialog.py   # Add/Edit bill form (QDialog)
+    ├── bills_view.py    # Bills tab — table + Add/Edit/Delete/Mark Paid
     ├── payments_view.py
     └── stocks_view.py
 ```
 
-Database schema lives in `db.py:init_db()` as a single `executescript`. No ORM — raw `sqlite3` with `row_factory = sqlite3.Row`. Foreign keys are enabled per connection.
+**Layers:** views call repositories; repositories call `db.get_connection()`; no ORM. Foreign keys are enabled per connection in `get_connection()`. Schema lives in `db.py:init_db()` as a single `executescript` — update it there when adding columns, then handle existing DBs manually or via a migration script.
 
 ## NixOS Integration
 
