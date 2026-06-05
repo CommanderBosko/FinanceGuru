@@ -34,9 +34,13 @@ class PayoffPlan:
     capped: bool                     # True if simulation hit the 600-month limit
 
 
-def calculate(debts: list[Debt], extra: float) -> tuple[PayoffPlan, PayoffPlan]:
-    snowball = _simulate("Snowball", sorted(debts, key=lambda d: d.balance), extra)
-    avalanche = _simulate("Avalanche", sorted(debts, key=lambda d: -d.interest_rate), extra)
+def calculate(
+    debts: list[Debt],
+    extra: float,
+    lump_sums: list[tuple[int, float]] | None = None,
+) -> tuple[PayoffPlan, PayoffPlan]:
+    snowball = _simulate("Snowball", sorted(debts, key=lambda d: d.balance), extra, lump_sums)
+    avalanche = _simulate("Avalanche", sorted(debts, key=lambda d: -d.interest_rate), extra, lump_sums)
     return snowball, avalanche
 
 
@@ -48,10 +52,21 @@ def payoff_date(payoff_month: int) -> str:
     return date(year, month, 1).strftime("%b %Y")
 
 
-def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
+def _simulate(
+    strategy: str,
+    ordered: list[Debt],
+    extra: float,
+    lump_sums: list[tuple[int, float]] | None = None,
+) -> PayoffPlan:
     if not ordered:
         return PayoffPlan(strategy=strategy, debt_results=[], debt_order=[],
                           schedule=[], total_months=0, total_interest=0.0, capped=False)
+
+    # One-time payments collapsed to {month: total injected that month}
+    lump_by_month: dict[int, float] = {}
+    for m, amount in (lump_sums or []):
+        if m >= 1 and amount > 0:
+            lump_by_month[m] = lump_by_month.get(m, 0.0) + amount
 
     states = [
         {"debt": d, "balance": d.balance, "interest_paid": 0.0, "payoff_month": None}
@@ -80,8 +95,9 @@ def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
                 s["balance"] = max(0.0, s["balance"] - pay)
                 paid[i] += pay
 
-        # Roll extra toward the highest-priority unpaid debt
-        remaining = rolling_extra
+        # Roll extra (recurring snowball + any one-time lump this month) toward
+        # the highest-priority unpaid debt
+        remaining = rolling_extra + lump_by_month.get(month, 0.0)
         for i, s in enumerate(states):
             if s["balance"] <= 0 or remaining <= 0:
                 continue

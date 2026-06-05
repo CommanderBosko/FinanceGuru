@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QHBoxLayout, QHeaderView,
-    QLabel, QMessageBox, QPushButton, QSplitter, QTableWidget,
+    QLabel, QMessageBox, QPushButton, QSpinBox, QSplitter, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -12,6 +12,8 @@ from financeguru.views.debt_dialog import DebtDialog
 
 _COLS_DEBT = ["Name", "Balance", "APR %", "Min Payment", "Notes"]
 _COLS_RESULT = ["#", "Debt", "Balance", "APR %", "Payoff Month", "Payoff Date", "Interest Paid"]
+_COLS_LUMP = ["Month", "Date", "Amount"]
+_MAX_MONTHS = 600  # 50-year cap, matches snowball simulation limit
 
 
 class DebtSnowballView(QWidget):
@@ -19,6 +21,7 @@ class DebtSnowballView(QWidget):
         super().__init__(parent)
         self._debts: list[Debt] = []
         self._plans: dict[str, PayoffPlan] = {}
+        self._lump_sums: list[tuple[int, float]] = []  # (month, amount)
 
         # ── Top controls ──────────────────────────────────────────────────
         btn_bar = QHBoxLayout()
@@ -51,6 +54,44 @@ class DebtSnowballView(QWidget):
         self._debt_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._debt_table.setAlternatingRowColors(True)
         self._debt_table.setMaximumHeight(200)
+
+        # ── One-time extra payments ───────────────────────────────────────
+        self._lump_box = QGroupBox("One-time extra payments  (e.g. tax refund, bonus)")
+        lump_layout = QVBoxLayout(self._lump_box)
+
+        entry = QHBoxLayout()
+        entry.addWidget(QLabel("Month:"))
+        self._lump_month = QSpinBox()
+        self._lump_month.setRange(1, _MAX_MONTHS)
+        self._lump_month.setPrefix("Month ")
+        entry.addWidget(self._lump_month)
+        self._lump_date = QLabel()
+        self._lump_date.setStyleSheet("color: gray;")
+        entry.addWidget(self._lump_date)
+        entry.addSpacing(12)
+        entry.addWidget(QLabel("Amount:"))
+        self._lump_amount = QDoubleSpinBox()
+        self._lump_amount.setRange(0, 9_999_999)
+        self._lump_amount.setDecimals(2)
+        self._lump_amount.setPrefix("$")
+        entry.addWidget(self._lump_amount)
+        self._btn_add_lump = QPushButton("Add")
+        entry.addWidget(self._btn_add_lump)
+        entry.addStretch()
+        lump_layout.addLayout(entry)
+
+        self._lump_table = QTableWidget(0, len(_COLS_LUMP))
+        self._lump_table.setHorizontalHeaderLabels(_COLS_LUMP)
+        self._lump_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._lump_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._lump_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._lump_table.setAlternatingRowColors(True)
+        self._lump_table.setMaximumHeight(140)
+        lump_layout.addWidget(self._lump_table)
+
+        self._btn_remove_lump = QPushButton("Remove Selected")
+        self._btn_remove_lump.setEnabled(False)
+        lump_layout.addWidget(self._btn_remove_lump, alignment=Qt.AlignmentFlag.AlignRight)
 
         # ── Results area ──────────────────────────────────────────────────
         self._results_frame = QFrame()
@@ -97,6 +138,7 @@ class DebtSnowballView(QWidget):
         top_layout.setContentsMargins(0, 0, 0, 0)
         top_layout.addLayout(btn_bar)
         top_layout.addWidget(self._debt_table)
+        top_layout.addWidget(self._lump_box)
         splitter.addWidget(top)
         splitter.addWidget(self._results_frame)
         splitter.setStretchFactor(0, 1)
@@ -113,7 +155,12 @@ class DebtSnowballView(QWidget):
         self._debt_table.itemSelectionChanged.connect(self._on_selection_changed)
         self._debt_table.doubleClicked.connect(self._on_edit)
         self._schedule_strategy.currentTextChanged.connect(self._render_schedule)
+        self._btn_add_lump.clicked.connect(self._on_add_lump)
+        self._btn_remove_lump.clicked.connect(self._on_remove_lump)
+        self._lump_month.valueChanged.connect(self._update_lump_date)
+        self._lump_table.itemSelectionChanged.connect(self._on_lump_selection_changed)
 
+        self._update_lump_date()
         self._load()
 
     # ── Helpers ───────────────────────────────────────────────────────────
@@ -174,6 +221,43 @@ class DebtSnowballView(QWidget):
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(enabled)
 
+    # ── One-time payments ───────────────────────────────────────────────────
+
+    def _update_lump_date(self) -> None:
+        self._lump_date.setText(f"({payoff_date(self._lump_month.value())})")
+
+    def _on_add_lump(self) -> None:
+        amount = self._lump_amount.value()
+        if amount <= 0:
+            QMessageBox.information(self, "No Amount", "Enter an amount greater than $0.")
+            return
+        self._lump_sums.append((self._lump_month.value(), amount))
+        self._lump_sums.sort(key=lambda ls: ls[0])
+        self._lump_amount.setValue(0)
+        self._render_lump_table()
+
+    def _on_remove_lump(self) -> None:
+        row = self._lump_table.currentRow()
+        if 0 <= row < len(self._lump_sums):
+            del self._lump_sums[row]
+            self._render_lump_table()
+
+    def _on_lump_selection_changed(self) -> None:
+        self._btn_remove_lump.setEnabled(bool(self._lump_table.selectedItems()))
+
+    def _render_lump_table(self) -> None:
+        self._lump_table.setRowCount(len(self._lump_sums))
+        for row, (month, amount) in enumerate(self._lump_sums):
+            month_item = QTableWidgetItem(f"Month {month}")
+            month_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            date_item = QTableWidgetItem(payoff_date(month))
+            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            amount_item = QTableWidgetItem(f"${amount:,.2f}")
+            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._lump_table.setItem(row, 0, month_item)
+            self._lump_table.setItem(row, 1, date_item)
+            self._lump_table.setItem(row, 2, amount_item)
+
     def _on_add(self) -> None:
         dialog = DebtDialog(self)
         if dialog.exec():
@@ -207,7 +291,7 @@ class DebtSnowballView(QWidget):
             QMessageBox.information(self, "No Debts", "Add at least one debt to calculate.")
             return
         extra = self._extra.value()
-        snowball, avalanche = calculate(self._debts, extra)
+        snowball, avalanche = calculate(self._debts, extra, self._lump_sums)
         self._fill_result_panel(self._snowball_box, snowball)
         self._fill_result_panel(self._avalanche_box, avalanche)
         self._fill_comparison(snowball, avalanche)
