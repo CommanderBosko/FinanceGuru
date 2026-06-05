@@ -43,6 +43,14 @@ def init_db() -> None:
                 notes           TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS incomes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL,
+                amount      REAL    NOT NULL,
+                frequency   TEXT    NOT NULL DEFAULT 'monthly',
+                notes       TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS debts (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 name            TEXT    NOT NULL,
