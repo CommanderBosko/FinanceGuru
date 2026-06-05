@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDoubleSpinBox, QFrame, QGroupBox, QHBoxLayout, QHeaderView,
+    QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QHBoxLayout, QHeaderView,
     QLabel, QMessageBox, QPushButton, QSplitter, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
@@ -18,6 +18,7 @@ class DebtSnowballView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._debts: list[Debt] = []
+        self._plans: dict[str, PayoffPlan] = {}
 
         # ── Top controls ──────────────────────────────────────────────────
         btn_bar = QHBoxLayout()
@@ -70,6 +71,23 @@ class DebtSnowballView(QWidget):
         self._comparison.setFont(font)
         results_layout.addWidget(self._comparison)
 
+        # ── Payment schedule ──────────────────────────────────────────────
+        schedule_box = QGroupBox("Payment Schedule")
+        schedule_layout = QVBoxLayout(schedule_box)
+        selector_bar = QHBoxLayout()
+        selector_bar.addWidget(QLabel("Strategy:"))
+        self._schedule_strategy = QComboBox()
+        self._schedule_strategy.addItems(["Snowball", "Avalanche"])
+        selector_bar.addWidget(self._schedule_strategy)
+        selector_bar.addStretch()
+        schedule_layout.addLayout(selector_bar)
+        self._schedule_table = QTableWidget(0, 0)
+        self._schedule_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._schedule_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._schedule_table.setAlternatingRowColors(True)
+        schedule_layout.addWidget(self._schedule_table)
+        results_layout.addWidget(schedule_box)
+
         self._results_frame.setVisible(False)
 
         # ── Assemble ──────────────────────────────────────────────────────
@@ -94,6 +112,7 @@ class DebtSnowballView(QWidget):
         self._btn_calc.clicked.connect(self._on_calculate)
         self._debt_table.itemSelectionChanged.connect(self._on_selection_changed)
         self._debt_table.doubleClicked.connect(self._on_edit)
+        self._schedule_strategy.currentTextChanged.connect(self._render_schedule)
 
         self._load()
 
@@ -192,7 +211,45 @@ class DebtSnowballView(QWidget):
         self._fill_result_panel(self._snowball_box, snowball)
         self._fill_result_panel(self._avalanche_box, avalanche)
         self._fill_comparison(snowball, avalanche)
+        self._plans = {"Snowball": snowball, "Avalanche": avalanche}
+        self._render_schedule()
         self._results_frame.setVisible(True)
+
+    def _render_schedule(self) -> None:
+        plan = self._plans.get(self._schedule_strategy.currentText())
+        table = self._schedule_table
+        if plan is None or not plan.schedule:
+            table.setRowCount(0)
+            table.setColumnCount(0)
+            return
+
+        headers = ["Month", "Date", *plan.debt_order, "Total"]
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.setRowCount(len(plan.schedule))
+
+        def _right(text: str) -> QTableWidgetItem:
+            item = QTableWidgetItem(text)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return item
+
+        def _center(text: str) -> QTableWidgetItem:
+            item = QTableWidgetItem(text)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            return item
+
+        for row, m in enumerate(plan.schedule):
+            table.setItem(row, 0, _center(str(m.month)))
+            table.setItem(row, 1, _center(payoff_date(m.month)))
+            for col, amount in enumerate(m.payments):
+                text = f"${amount:,.2f}" if amount > 0 else "—"
+                table.setItem(row, 2 + col, _right(text))
+            table.setItem(row, len(headers) - 1, _right(f"${m.total:,.2f}"))
+
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
 
     def _fill_result_panel(self, box: QGroupBox, plan: PayoffPlan) -> None:
         table = self._result_table(box)

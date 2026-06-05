@@ -17,9 +17,18 @@ class DebtResult:
 
 
 @dataclass
+class ScheduleMonth:
+    month: int
+    payments: list[float]   # amount paid this month, aligned with PayoffPlan.debt_order
+    total: float
+
+
+@dataclass
 class PayoffPlan:
     strategy: str
     debt_results: list[DebtResult]   # sorted by payoff order
+    debt_order: list[str]            # debt names in payment-priority order (schedule columns)
+    schedule: list[ScheduleMonth]    # per-month payment breakdown
     total_months: int
     total_interest: float
     capped: bool                     # True if simulation hit the 600-month limit
@@ -41,8 +50,8 @@ def payoff_date(payoff_month: int) -> str:
 
 def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
     if not ordered:
-        return PayoffPlan(strategy=strategy, debt_results=[], total_months=0,
-                          total_interest=0.0, capped=False)
+        return PayoffPlan(strategy=strategy, debt_results=[], debt_order=[],
+                          schedule=[], total_months=0, total_interest=0.0, capped=False)
 
     states = [
         {"debt": d, "balance": d.balance, "interest_paid": 0.0, "payoff_month": None}
@@ -51,9 +60,11 @@ def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
     rolling_extra = max(0.0, extra)
     month = 0
     capped = False
+    schedule: list[ScheduleMonth] = []
 
     while month < _MAX_MONTHS:
         month += 1
+        paid = [0.0] * len(states)
 
         # Accrue monthly interest on each active debt
         for s in states:
@@ -63,19 +74,21 @@ def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
                 s["interest_paid"] += interest
 
         # Pay minimum on each active debt
-        for s in states:
+        for i, s in enumerate(states):
             if s["balance"] > 0:
                 pay = min(s["balance"], s["debt"].minimum_payment)
                 s["balance"] = max(0.0, s["balance"] - pay)
+                paid[i] += pay
 
         # Roll extra toward the highest-priority unpaid debt
         remaining = rolling_extra
-        for s in states:
+        for i, s in enumerate(states):
             if s["balance"] <= 0 or remaining <= 0:
                 continue
             pay = min(s["balance"], remaining)
             s["balance"] = max(0.0, s["balance"] - pay)
             remaining -= pay
+            paid[i] += pay
 
         # Mark paid-off debts and grow rolling extra
         for s in states:
@@ -83,6 +96,12 @@ def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
                 s["balance"] = 0.0
                 s["payoff_month"] = month
                 rolling_extra += s["debt"].minimum_payment
+
+        schedule.append(ScheduleMonth(
+            month=month,
+            payments=[round(p, 2) for p in paid],
+            total=round(sum(paid), 2),
+        ))
 
         if all(s["balance"] == 0 for s in states):
             break
@@ -110,6 +129,8 @@ def _simulate(strategy: str, ordered: list[Debt], extra: float) -> PayoffPlan:
     return PayoffPlan(
         strategy=strategy,
         debt_results=results,
+        debt_order=[d.name for d in ordered],
+        schedule=schedule,
         total_months=month,
         total_interest=round(sum(r.interest_paid for r in results), 2),
         capped=capped,
