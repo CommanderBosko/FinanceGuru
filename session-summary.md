@@ -2,6 +2,71 @@
 
 ---
 
+## Session: 2026-06-05 — Stock Tips, Debt Snowball, Salary, and Lump-Sum Payments
+
+**Duration Estimate**: ~4 hours (17:36 – 21:27 based on commit timestamps)
+**Session Focus**: Expand the app from four tabs to seven by implementing Stock Tips, Debt Snowball with full payment simulation, and a Salary/budget visualizer — all fully wired into the existing SQLite schema.
+
+### What Was Accomplished
+
+- Implemented the Stock Tips tab: track personal tips (ticker, action, target price, confidence, notes) stored in a new `stock_tips` table; a Refresh Analyst Data button fetches yfinance analyst consensus and mean price target, caching them in the DB without overwriting user-entered values.
+- Implemented the Debt Snowball tab: CRUD for debts (balance, APR, minimum payment); a pure-Python month-by-month simulator (`snowball.py`) computes both Snowball and Avalanche strategies with rolling extra payments; a side-by-side summary shows total interest paid and months saved per strategy.
+- Added a detailed per-debt monthly payment schedule table to the Debt Snowball tab: shows exactly how much goes to minimum vs. rolling-extra payments for each debt each month; strategy-selectable.
+- Added one-time lump-sum extra payments to the Debt Snowball calculator: model windfalls (tax refund, bonus) tied to a specific month; lump amount rolls onto the highest-priority debt first, cascading any leftover to the next debt; surfaced in both the summary and the schedule table.
+- Implemented the Salary tab: income CRUD with paycheck frequency (weekly / biweekly / semimonthly / monthly / annual); normalizes all incomes to a monthly figure; subtracts monthly bills to show surplus spending money; a savings-rate slider splits surplus into a proportional save-vs-spend bar with monthly and annual projections.
+- Added "specific days" pay frequency to the Salary tab: for paychecks tied to calendar dates (e.g., 1st and 15th); a day-picker grid (1–31) appears in the dialog; monthly income = per-paycheck amount × count of selected days; stored as comma-separated string in a new `pay_days` column with idempotent migration.
+- All tabs now refresh on selection via `currentChanged` so cross-tab figures (bills total, income surplus) stay current.
+
+### Files Changed
+
+- `src/financeguru/db.py` — Added `stock_tips`, `debts`, and `incomes` table DDL; added `pay_days` column with try/except migration guard
+- `src/financeguru/models/stock_tip.py` — `StockTip` dataclass (new)
+- `src/financeguru/models/debt.py` — `Debt` dataclass (new)
+- `src/financeguru/models/income.py` — `Income` dataclass with `pay_days` field
+- `src/financeguru/repositories/stock_tips.py` — Full CRUD + analyst data update (new)
+- `src/financeguru/repositories/debts.py` — Full CRUD for debts (new)
+- `src/financeguru/repositories/incomes.py` — Full CRUD for incomes with `pay_days` support
+- `src/financeguru/prices.py` — Extended with `AnalystFetcher` QThread for analyst consensus data
+- `src/financeguru/snowball.py` — Pure-Python Snowball/Avalanche simulator with lump-sum support and monthly payment schedule recording (new)
+- `src/financeguru/budget.py` — Shared frequency-to-monthly normalization, including specific-days logic
+- `src/financeguru/views/main_window.py` — Wired Stock Tips, Debt Snowball, and Salary tabs; hooked `currentChanged` for all tab refresh
+- `src/financeguru/views/stock_tip_dialog.py` — Add/Edit stock tip form (new)
+- `src/financeguru/views/stock_tips_view.py` — Stock Tips tab view with Refresh Analyst Data (new)
+- `src/financeguru/views/debt_dialog.py` — Add/Edit debt form (new)
+- `src/financeguru/views/debt_snowball_view.py` — Debt Snowball tab with summary, schedule table, and lump-sum entry (new)
+- `src/financeguru/views/income_dialog.py` — Add/Edit income form with specific-days day-picker grid
+- `src/financeguru/views/salary_view.py` — Salary tab with budget visualizer and savings-rate slider
+
+### Commits This Session
+
+- `25f37bd` — feat: add Stock Tips tab with analyst data from yfinance
+- `6b06eb8` — feat: add Debt Snowball tab with Snowball vs Avalanche comparison
+- `1d661c1` — feat: add payment schedule table to Debt Snowball tab
+- `16ef976` — feat: add one-time lump-sum payments to Debt Snowball calculator
+- `401e9f7` — feat: add Salary tab with budget and savings visualizer
+- `77f3027` — feat: add "specific days" pay frequency for exact paydays
+
+### Decisions Made
+
+- **Pure-Python snowball simulator** — No external dependencies; a single-pass month-by-month loop handles both strategies, rolling extra payments, and lump-sum windfalls. Keeps the logic testable and portable.
+- **`budget.py` shared normalization layer** — Frequency-to-monthly math lives in one module consumed by the Salary view and income repository, avoiding duplication.
+- **Specific-days stored as comma-separated string** — Simple to query and display; monthly income is amount × count of days, treating each calendar date as one paycheck per month.
+- **Analyst data cached in DB** — yfinance data is written to `stock_tips` columns on refresh but never overwrites user-entered values; avoids repeated network calls on every view load.
+- **Idempotent column migrations** — New columns added with `ALTER TABLE ... ADD COLUMN` inside a try/except so existing DBs silently receive the new column without requiring a manual migration step.
+
+### Issues Encountered
+
+- None blocking. The specific-days monthly calculation requires a deliberate modeling decision (count of selected days = paychecks per month); documented in project-state.md.
+
+### Remaining / Next Session
+
+- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages`.
+- Write pytest tests for the repository layer (bills, payments, stocks, debts, incomes, stock_tips) using an in-memory SQLite DB.
+- Add user-visible error feedback when yfinance price or analyst data fetch fails.
+- Consider a reporting/charts tab using the salary, debt, and bill data now available.
+
+---
+
 ## Session: 2026-06-04 — Project Inception and Full Initial Build
 
 **Duration Estimate**: ~2.5 hours (08:14 – 10:35 based on commit timestamps)
