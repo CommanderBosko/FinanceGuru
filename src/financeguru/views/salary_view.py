@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from financeguru.budget import monthly_bill, monthly_income
+from financeguru.budget import SPECIFIC_DAYS, format_pay_days, monthly_bill, monthly_income
 from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import incomes as income_repo
@@ -132,7 +132,12 @@ class SalaryView(QWidget):
             monthly = monthly_income(inc)
             self._table.setItem(row, 0, QTableWidgetItem(inc.name))
             self._table.setItem(row, 1, _right(f"${inc.amount:,.2f}"))
-            freq_item = QTableWidgetItem(inc.frequency)
+            if inc.frequency == SPECIFIC_DAYS:
+                days = format_pay_days(inc.pay_days)
+                freq_text = f"days {days}" if days else SPECIFIC_DAYS
+            else:
+                freq_text = inc.frequency
+            freq_item = QTableWidgetItem(freq_text)
             freq_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._table.setItem(row, 2, freq_item)
             self._table.setItem(row, 3, _right(f"${monthly:,.2f}"))

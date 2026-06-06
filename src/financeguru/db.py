@@ -12,6 +12,13 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def _ensure_column(conn, table: str, column: str, ddl: str) -> None:
+    """Add a column to an existing table if it isn't already present."""
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
 def init_db() -> None:
     DB_DIR.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
@@ -48,6 +55,7 @@ def init_db() -> None:
                 name        TEXT    NOT NULL,
                 amount      REAL    NOT NULL,
                 frequency   TEXT    NOT NULL DEFAULT 'monthly',
+                pay_days    TEXT,
                 notes       TEXT
             );
 
@@ -74,3 +82,6 @@ def init_db() -> None:
                 analyst_updated TEXT
             );
         """)
+
+        # Migrations for databases created before a column existed.
+        _ensure_column(conn, "incomes", "pay_days", "pay_days TEXT")

@@ -8,6 +8,7 @@ def _row_to_income(row) -> Income:
         name=row["name"],
         amount=row["amount"],
         frequency=row["frequency"],
+        pay_days=row["pay_days"],
         notes=row["notes"],
     )
 
@@ -21,8 +22,8 @@ def get_all() -> list[Income]:
 def add(income: Income) -> int:
     with get_connection() as conn:
         cur = conn.execute(
-            "INSERT INTO incomes (name, amount, frequency, notes) VALUES (?, ?, ?, ?)",
-            (income.name, income.amount, income.frequency, income.notes),
+            "INSERT INTO incomes (name, amount, frequency, pay_days, notes) VALUES (?, ?, ?, ?, ?)",
+            (income.name, income.amount, income.frequency, income.pay_days, income.notes),
         )
         return cur.lastrowid or 0
 
@@ -30,8 +31,8 @@ def add(income: Income) -> int:
 def update(income: Income) -> None:
     with get_connection() as conn:
         conn.execute(
-            "UPDATE incomes SET name=?, amount=?, frequency=?, notes=? WHERE id=?",
-            (income.name, income.amount, income.frequency, income.notes, income.id),
+            "UPDATE incomes SET name=?, amount=?, frequency=?, pay_days=?, notes=? WHERE id=?",
+            (income.name, income.amount, income.frequency, income.pay_days, income.notes, income.id),
         )
 
 
