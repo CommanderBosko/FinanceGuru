@@ -2,6 +2,85 @@
 
 ---
 
+## Session: 2026-06-07 — Currency Precision (Decimal) and Security Hardening
+
+**Duration Estimate**: ~30 minutes (09:42 – 10:11 based on commit timestamps)
+**Session Focus**: Eliminate IEEE-754 float error from all monetary arithmetic and close out a full security audit covering DB permissions, input validation, dependency pinning, and network-call safety.
+
+### What Was Accomplished
+
+- Introduced `money.py` with helpers (`to_decimal`, `optional_decimal`, `cents`, `ZERO`, `CENT`) and registered a `sqlite3` adapter so `Decimal` values bind transparently to `REAL` columns — existing databases load unchanged.
+- Migrated all currency, rate, and share fields in every model, repository, view, and simulation to `Decimal`. Float-to-Decimal coercion happens at the read boundary (repository layer); views convert back to `float` only for Qt spinboxes.
+- Rewrote `snowball.py` to simulate entirely in `Decimal`, quantizing to cents only at the output boundary — eliminates error accumulation in up to 600-month simulations.
+- Rewrote `budget.py` monthly normalization to use exact `Decimal` division from integer ratios instead of pre-rounded float factors.
+- Locked down `finance.db` file permissions: data directory set to `0700`, database file set to `0600`, so plaintext financial data is not world-readable on multi-user machines.
+- Added `prices.py` price validation: coerces `last_price` to a finite, positive value or `None` — prevents `nan`/`inf`/`None` from rendering as "nan" in market value and gain/loss columns.
+- Added per-ticker 15-second timeout to every yfinance call (daemon thread + `join`) in both `PriceFetcher` and `TipFetcher`; re-enabled the Refresh button via the thread's `finished` signal; added `quit()`/`wait()` shutdown in `closeEvent`.
+- Added `validators.py` with `normalize_ticker()` — restricts user-supplied tickers to letters, digits, `.`, `-` (max 12 chars) before they reach yfinance or the DB.
+- Wired `normalize_ticker()` into `StockDialog` and `StockTipDialog` on both the Accept and Fetch paths.
+- Added identifier validation to `db.py:_ensure_column` (table/column name allowlist + DDL prefix check) to close a latent injection sink.
+- Added `ON DELETE CASCADE` to the `payments.bill_id` FK in the `init_db` schema for new databases; the repository-level explicit child delete is retained for backward compatibility with existing databases.
+- Pinned `PySide6 (>=6.7,<7)` and `yfinance (>=1.3,<2)` in `pyproject.toml` so non-Nix pip installs cannot silently pull a regressed or malicious release.
+- Added `*.db` / `*.sqlite*` patterns to `.gitignore` so the financial database can never be committed accidentally.
+
+### Files Changed
+
+- `src/financeguru/money.py` — New module: `Decimal` helpers and `sqlite3` adapter registration (new)
+- `src/financeguru/db.py` — Decimal adapter; `0700`/`0600` fs permissions; `_ensure_column` identifier validation; FK cascade on `payments.bill_id`
+- `src/financeguru/models/bill.py` — Currency fields changed to `Decimal`
+- `src/financeguru/models/debt.py` — Balance, APR, and payment fields changed to `Decimal`
+- `src/financeguru/models/income.py` — Amount field changed to `Decimal`
+- `src/financeguru/models/payment.py` — Amount field changed to `Decimal`
+- `src/financeguru/models/stock.py` — Price and share fields changed to `Decimal`
+- `src/financeguru/models/stock_tip.py` — Price fields changed to `Decimal`
+- `src/financeguru/repositories/bills.py` — Coerce money fields via `to_decimal` at read boundary; `ON DELETE CASCADE` note
+- `src/financeguru/repositories/debts.py` — Coerce all numeric fields via `to_decimal`/`optional_decimal`
+- `src/financeguru/repositories/incomes.py` — Coerce amount via `to_decimal`
+- `src/financeguru/repositories/payments.py` — Coerce amount via `to_decimal`
+- `src/financeguru/repositories/stock_tips.py` — Coerce price fields via `optional_decimal`
+- `src/financeguru/repositories/stocks.py` — Coerce price/share fields via `to_decimal`/`optional_decimal`
+- `src/financeguru/snowball.py` — Full simulation in `Decimal`; cent-quantize at output boundary
+- `src/financeguru/budget.py` — Monthly normalization via exact `Decimal` division
+- `src/financeguru/prices.py` — Price validation (finite, positive, or `None`); 15s per-ticker timeout in `PriceFetcher` and `TipFetcher`
+- `src/financeguru/validators.py` — New `normalize_ticker()` function (new)
+- `src/financeguru/views/bill_dialog.py` — Read `Decimal` via `float()` for spinboxes; build models with `cents()`
+- `src/financeguru/views/dashboard_view.py` — Decimal-aware display
+- `src/financeguru/views/debt_dialog.py` — Spinbox read/write via `float()`/`cents()`
+- `src/financeguru/views/income_dialog.py` — Spinbox read/write via `float()`/`cents()`
+- `src/financeguru/views/payment_dialog.py` — Spinbox read/write via `float()`/`cents()`
+- `src/financeguru/views/stock_dialog.py` — Ticker normalized via `normalize_ticker()`; fetched price coerced to `Decimal`
+- `src/financeguru/views/stock_tip_dialog.py` — Ticker normalized via `normalize_ticker()`
+- `src/financeguru/views/stocks_view.py` — Re-enable Refresh button on `finished`; `quit()`/`wait()` on `closeEvent`
+- `src/financeguru/views/stock_tips_view.py` — Re-enable Refresh button on `finished`; `quit()`/`wait()` on `closeEvent`
+- `pyproject.toml` — Pinned `PySide6 >=6.7,<7` and `yfinance >=1.3,<2`
+- `.gitignore` — Added `*.db` / `*.sqlite*`
+
+### Commits This Session
+
+- `dd62198` — fix(security): lock down DB perms, validate prices, bound fetch timeouts
+- `c4a0cec` — harden(security): pin deps, validate tickers, guard DDL, FK cascade
+- `38996f8` — refactor(money): represent currency as Decimal, not float
+
+### Decisions Made
+
+- **`Decimal` stored as `REAL`, not `TEXT`** — Avoids a schema migration; cent-quantized values round-trip through SQLite `REAL` exactly because they fit in the 53-bit mantissa. The `sqlite3` adapter handles binding transparently.
+- **Coerce at the read boundary, not the write boundary** — Repositories convert incoming `sqlite3.Row` values to `Decimal` once; all internal logic then operates on exact types without defensive casting at every call site.
+- **Backward-compatible FK cascade** — New databases get `ON DELETE CASCADE` on `payments.bill_id`; the explicit child-delete in `bills.delete()` is kept so existing databases (created before this change) still clean up correctly.
+- **15-second per-ticker timeout via daemon thread** — The simplest portable approach for yfinance, which does not expose a native timeout parameter; the daemon thread exits automatically on process termination if the join timeout expires.
+
+### Issues Encountered
+
+- None blocking. All changes verified with Decimal unit tests, an offscreen GUI smoke test, and a live-DB load pass.
+
+### Remaining / Next Session
+
+- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages` (top priority).
+- Write pytest tests for the repository layer (`bills`, `payments`, `stocks`, `debts`, `incomes`, `stock_tips`) using an in-memory SQLite database.
+- Add user-visible error feedback when yfinance price or analyst data fetch fails (network error, rate limit).
+- Consider a reporting/charts tab using the salary, debt, and bill data now available.
+
+---
+
 ## Session: 2026-06-05 — Stock Tips, Debt Snowball, Salary, and Lump-Sum Payments
 
 **Duration Estimate**: ~4 hours (17:36 – 21:27 based on commit timestamps)

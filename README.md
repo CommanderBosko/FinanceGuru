@@ -70,10 +70,12 @@ No manual configuration is required. New columns added between versions are appl
 ```
 src/financeguru/
 ├── main.py                       # Entry point — init_db(), QApplication, MainWindow
-├── db.py                         # SQLite connection + schema (init_db); row_factory=sqlite3.Row
-├── prices.py                     # PriceFetcher / AnalystFetcher QThreads — background yfinance lookups
-├── snowball.py                   # Pure-Python Debt Snowball/Avalanche month-by-month simulator
-├── budget.py                     # Shared frequency-to-monthly normalization (all pay frequencies)
+├── db.py                         # SQLite connection + schema (init_db); row_factory=sqlite3.Row; Decimal adapter
+├── money.py                      # Decimal helpers (to_decimal, cents, ZERO, CENT) + sqlite3 adapter
+├── validators.py                 # normalize_ticker() — restricts user tickers before yfinance/DB
+├── prices.py                     # PriceFetcher / AnalystFetcher QThreads — background yfinance lookups with timeout
+├── snowball.py                   # Pure-Python Debt Snowball/Avalanche month-by-month simulator (Decimal)
+├── budget.py                     # Shared frequency-to-monthly normalization (all pay frequencies, Decimal)
 ├── models/
 │   ├── bill.py                   # Bill dataclass
 │   ├── payment.py                # Payment dataclass
@@ -111,6 +113,15 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-06-07 — Currency Precision (Decimal) and Security Hardening**
+
+- Replaced all `float` monetary values with `decimal.Decimal` across models, repositories, views, and the Snowball/Avalanche simulator — eliminates IEEE-754 rounding error in month-by-month debt simulations. A `sqlite3` adapter binds `Decimal` transparently to existing `REAL` columns; no schema migration required.
+- Locked `finance.db` file permissions to `0600` and the data directory to `0700` (plaintext financial data no longer world-readable).
+- Added `validators.py` with `normalize_ticker()` — user-supplied tickers are restricted to a safe charset before reaching yfinance or the DB.
+- Added 15-second per-ticker timeout to all yfinance calls; Refresh buttons re-enable via the thread's `finished` signal; threads are shut down cleanly on window close.
+- Pinned `PySide6 >=6.7,<7` and `yfinance >=1.3,<2` in `pyproject.toml`; added `*.db`/`*.sqlite*` to `.gitignore`.
+- Added identifier validation to `db.py:_ensure_column` to guard against injection through future non-literal callers.
 
 **2026-06-05 — Stock Tips, Debt Snowball, Salary, and Lump-Sum Payments**
 
