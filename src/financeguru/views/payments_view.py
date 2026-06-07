@@ -30,11 +30,11 @@ class PaymentsView(QWidget):
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
         btn_bar.addWidget(self._chk_current_only)
+        btn_bar.addStretch()
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search bills, amounts, dates, notes…")
         self._search.setClearButtonEnabled(True)
         btn_bar.addWidget(self._search)
-        btn_bar.addStretch()
         layout.addLayout(btn_bar)
 
         self._table = QTableWidget(0, 4)
