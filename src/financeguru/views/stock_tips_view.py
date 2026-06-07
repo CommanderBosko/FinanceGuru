@@ -163,7 +163,18 @@ class StockTipsView(QWidget):
         self._fetcher = TipFetcher(tickers, self)
         self._fetcher.tips_ready.connect(self._on_tips_ready)
         self._fetcher.fetch_error.connect(self._on_fetch_error)
+        self._fetcher.finished.connect(self._restore_refresh_button)
         self._fetcher.start()
+
+    def _restore_refresh_button(self) -> None:
+        self._btn_refresh.setEnabled(True)
+        self._btn_refresh.setText("Refresh Analyst Data")
+
+    def closeEvent(self, event) -> None:
+        if self._fetcher is not None and self._fetcher.isRunning():
+            self._fetcher.quit()
+            self._fetcher.wait(2000)
+        super().closeEvent(event)
 
     def _on_tips_ready(self, data: dict) -> None:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

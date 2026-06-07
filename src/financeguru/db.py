@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from pathlib import Path
 
@@ -7,6 +8,12 @@ DB_PATH = DB_DIR / "finance.db"
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
+    # Financial data is plaintext SQLite — keep it readable only by the owner,
+    # since these machines have multiple local users (bosko, natty).
+    try:
+        os.chmod(DB_PATH, 0o600)
+    except OSError:
+        pass
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -21,6 +28,12 @@ def _ensure_column(conn, table: str, column: str, ddl: str) -> None:
 
 def init_db() -> None:
     DB_DIR.mkdir(parents=True, exist_ok=True)
+    # Restrict the data directory to the owner; this also covers the -wal/-journal
+    # sidecar files SQLite creates alongside finance.db.
+    try:
+        os.chmod(DB_DIR, 0o700)
+    except OSError:
+        pass
     with get_connection() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS bills (

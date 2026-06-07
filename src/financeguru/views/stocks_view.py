@@ -171,7 +171,18 @@ class StocksView(QWidget):
         self._fetcher = fetcher
         fetcher.prices_ready.connect(self._on_prices_ready)
         fetcher.fetch_error.connect(self._on_fetch_error)
+        fetcher.finished.connect(self._restore_refresh_button)
         fetcher.start()
+
+    def _restore_refresh_button(self) -> None:
+        self._btn_refresh.setEnabled(True)
+        self._btn_refresh.setText("Refresh Prices")
+
+    def closeEvent(self, event) -> None:
+        if self._fetcher is not None and self._fetcher.isRunning():
+            self._fetcher.quit()
+            self._fetcher.wait(2000)
+        super().closeEvent(event)
 
     def _on_prices_ready(self, prices: dict) -> None:
         self._prices = prices
