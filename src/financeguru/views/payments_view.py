@@ -2,7 +2,7 @@ from datetime import date
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
+    QCheckBox, QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -30,6 +30,10 @@ class PaymentsView(QWidget):
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
         btn_bar.addWidget(self._chk_current_only)
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search bills, amounts, dates, notes…")
+        self._search.setClearButtonEnabled(True)
+        btn_bar.addWidget(self._search)
         btn_bar.addStretch()
         layout.addLayout(btn_bar)
 
@@ -46,6 +50,7 @@ class PaymentsView(QWidget):
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
         self._chk_current_only.toggled.connect(self._refresh)
+        self._search.textChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
 
@@ -63,6 +68,9 @@ class PaymentsView(QWidget):
         if self._chk_current_only.isChecked():
             prefix = date.today().strftime("%Y-%m-")
             rows = [r for r in rows if (r["paid_date"] or "").startswith(prefix)]
+        query = self._search.text().strip().lower()
+        if query:
+            rows = [r for r in rows if query in self._haystack(r)]
         self._rows = rows
         self._table.setRowCount(len(self._rows))
         for row, rec in enumerate(self._rows):
@@ -74,6 +82,16 @@ class PaymentsView(QWidget):
             self._table.setItem(row, 1, amount_item)
             self._table.setItem(row, 2, date_item)
             self._table.setItem(row, 3, QTableWidgetItem(rec["notes"] or ""))
+
+    @staticmethod
+    def _haystack(rec: dict) -> str:
+        """Lowercased, searchable text spanning a payment's display fields."""
+        return " ".join((
+            rec["bill_name"] or "Manual",
+            f"${rec['amount']:,.2f}",
+            rec["paid_date"] or "",
+            rec["notes"] or "",
+        )).lower()
 
     def _on_selection_changed(self) -> None:
         enabled = bool(self._table.selectedItems())
