@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from financeguru.db import get_connection
 from financeguru.models.payment import Payment
 from financeguru.money import to_decimal
@@ -40,6 +42,19 @@ def update(payment: Payment) -> None:
 def delete(payment_id: int) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM payments WHERE id=?", (payment_id,))
+
+
+def total_paid_by_bill() -> dict[int, Decimal]:
+    """Sum of all payments made against each bill, keyed by bill_id.
+
+    Used by the Goals tab to subtract paid contributions from a goal's price.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT bill_id, SUM(amount) AS total FROM payments"
+            " WHERE bill_id IS NOT NULL GROUP BY bill_id"
+        ).fetchall()
+    return {row["bill_id"]: to_decimal(row["total"]) for row in rows}
 
 
 def get_paid_bill_ids_for_month(year: int, month: int) -> set[int]:

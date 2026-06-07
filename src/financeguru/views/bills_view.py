@@ -60,6 +60,9 @@ class BillsView(QWidget):
 
         self._refresh()
 
+    def refresh(self) -> None:
+        self._refresh()
+
     def _refresh(self) -> None:
         self._bills = bill_repo.get_all()
         self._table.setRowCount(len(self._bills))

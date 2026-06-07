@@ -99,6 +99,15 @@ def init_db() -> None:
                 notes           TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS goals (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL,
+                price       REAL    NOT NULL,
+                target_date TEXT    NOT NULL,
+                bill_id     INTEGER REFERENCES bills(id) ON DELETE SET NULL,
+                notes       TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS stock_tips (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 ticker          TEXT    NOT NULL,
