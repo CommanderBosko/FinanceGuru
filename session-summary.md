@@ -2,6 +2,59 @@
 
 ---
 
+## Session: 2026-06-07 (Evening) — Goals Budgeting Tab
+
+**Duration Estimate**: Single focused session
+**Session Focus**: Add a Goals tab that lets users plan and track savings toward a future purchase, automatically wiring each goal to a recurring Bill so monthly contributions show up in the budget.
+
+### What Was Accomplished
+
+- Added a new **Goals** tab positioned immediately after the Debt Snowball tab (eighth tab total).
+- Each goal stores a name, price, target month, and optional notes. The "Afford By" date picker shows only month + year and snaps the stored date to the last day of that month, so every goal is fully funded by month-end.
+- Monthly savings calculation: `price / months_remaining`, rounded up to the cent via `ROUND_UP`; months floored at 1 so a goal due this month (or already past) never produces a divide-by-zero.
+- Adding a goal auto-creates a recurring monthly "Goal" bill in the Bills tab with `amount = monthly_savings`, `due_day = target_date.day`, and `notes = "Goal"`. Editing a goal updates its linked bill. Deleting a goal (with a confirm dialog) also deletes its linked bill.
+- Added an **Amount Left** column (right of Price) computed as `price − sum of payments against the goal's bill`, floored at $0. Marking the linked Goal bill as paid in the Bills tab reduces Amount Left on the next Goals tab refresh.
+- Added `payment_repo.total_paid_by_bill()` — a single grouped-sum query (`SUM(amount) GROUP BY bill_id`) returning a `dict[int, Decimal]`; used by the Goals tab to compute Amount Left without N+1 queries.
+- Added a public `BillsView.refresh()` method so `GoalsView` can trigger a Bills tab refresh after auto-creating or deleting a Goal bill.
+- `GoalDialog` shows a live "Save monthly" label that updates on every price or date change — users see the monthly commitment before committing.
+- Right-click context menu wired into the Goals table via the existing `attach_row_menu` helper (Add/Edit/Delete).
+
+### Files Changed
+
+- `src/financeguru/models/goal.py` — New: `Goal` dataclass, `months_remaining()` helper, `monthly_savings()` method (new file)
+- `src/financeguru/repositories/goals.py` — New: full CRUD (`get_all`, `add`, `update`, `delete`) (new file)
+- `src/financeguru/views/goal_dialog.py` — New: Add/Edit goal form with live monthly-savings label; date picker snaps to end of month (new file)
+- `src/financeguru/views/goals_view.py` — New: Goals tab view — table, toolbar buttons, bill sync logic, Amount Left computation (new file)
+- `src/financeguru/db.py` — Added `goals` table DDL (`id`, `name`, `price`, `target_date`, `bill_id` FK → `bills.id` ON DELETE SET NULL, `notes`)
+- `src/financeguru/views/main_window.py` — Imported `GoalsView`; registered Goals tab after Debt Snowball
+- `src/financeguru/views/bills_view.py` — Added public `refresh()` method delegating to existing `_refresh()`
+- `src/financeguru/repositories/payments.py` — Added `total_paid_by_bill() -> dict[int, Decimal]`
+
+### Commits This Session
+
+- `91b6e44` — feat(goals): add Goals budgeting tab with linked bills and Amount Left tracking
+
+### Decisions Made
+
+- **Goal always snaps to last day of month** — The picker exposes only month + year; the stored date is always the final calendar day of that month. This ensures the goal is fully funded at the end of the chosen month regardless of how many days are in it.
+- **Linked bill carries the savings amount** — Instead of a separate Goals payment log, goal contributions are tracked as ordinary payments against a real bill. This means the Bills and Dashboard tabs automatically show the monthly commitment without any special-casing.
+- **`ON DELETE SET NULL` on `goals.bill_id`** — If the linked bill is deleted directly from the Bills tab (rather than via the Goals tab), the goal row survives with `bill_id = NULL` and Amount Left falls back to zero-contributed. Prevents orphan goal rows with dangling FKs.
+- **Grouped-sum query in `total_paid_by_bill()`** — One SQL call returns all bill totals at once; `GoalsView._refresh()` does a dict lookup per goal rather than a per-goal query. Keeps the refresh O(1) in DB round-trips regardless of how many goals exist.
+- **`months_remaining` logic lives in the model** — `Goal.monthly_savings()` delegates to `months_remaining()` (also in `models/goal.py`), keeping math testable in isolation without importing any view or repository code.
+
+### Issues Encountered
+
+- None. All changes are additive; no existing schema columns were modified.
+
+### Remaining / Next Session
+
+- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages` (top priority).
+- Write pytest tests for the repository layer (`bills`, `payments`, `stocks`, `debts`, `incomes`, `stock_tips`, `goals`) using an in-memory SQLite database.
+- Add user-visible error feedback when yfinance price or analyst data fetch fails (network error, rate limit).
+- Consider a reporting/charts tab using the salary, debt, bill, and goals data now available.
+
+---
+
 ## Session: 2026-06-07 (PM) — Right-Click Menus, Payments Search, and UX Polish
 
 **Duration Estimate**: ~1 hour (17:16 – 17:43 based on commit timestamps)

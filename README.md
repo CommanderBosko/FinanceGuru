@@ -1,10 +1,10 @@
 # Finance Guru
 
-A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, and visualizes an income budget with savings projections. Built with PySide6 and SQLite, packaged as a Nix flake.
+A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, visualizes an income budget with savings projections, and plans savings goals with automatic monthly bill creation. Built with PySide6 and SQLite, packaged as a Nix flake.
 
 ## Current Status
 
-Active development — seven tabs fully implemented (Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income). All features are functional and persisted to SQLite. The app launches from the system app menu on NixOS with a custom icon.
+Active development — eight tabs fully implemented (Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, Goals). All features are functional and persisted to SQLite. The app launches from the system app menu on NixOS with a custom icon.
 
 ## Features
 
@@ -15,7 +15,8 @@ Active development — seven tabs fully implemented (Dashboard, Bills, Payments,
 - **Stock Tips** — Track personal tips (ticker, action, target price, confidence, notes). Refresh Analyst Data fetches yfinance analyst consensus and mean price target, caching them in the DB without overwriting user-entered values.
 - **Debt Snowball** — Track debts (balance, APR, minimum payment). A pure-Python month-by-month simulator computes both Snowball and Avalanche payoff strategies with rolling extra payments. Side-by-side summary shows total interest paid and time saved per strategy. A per-debt monthly payment schedule table shows exactly how each month's payment is allocated. One-time lump-sum extra payments (windfalls, bonuses, tax refunds) can be injected at a specific month and cascade across debts.
 - **Income** — Enter income sources at any frequency (weekly, biweekly, semimonthly, monthly, annual, or specific calendar days). All amounts are normalized to a monthly figure. Monthly bills are subtracted to show surplus spending money. A savings-rate slider splits the surplus into a proportional save-vs-spend bar with monthly and annual projections.
-- **Right-click context menus** — All six data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
+- **Goals** — Enter a savings goal (name, total price, target month). The app computes the required monthly contribution (`price / months_remaining`, rounded up to the cent) and auto-creates a recurring "Goal" bill so the commitment appears in the Bills and Dashboard tabs. Editing a goal updates its linked bill; deleting a goal (with confirmation) deletes its linked bill. An "Amount Left" column tracks how much of the goal price remains unfunded as payments accumulate. The "Afford By" date always snaps to the last day of the chosen month.
+- **Right-click context menus** — All seven data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball, Goals) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
 - **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
 - **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix.
 
@@ -83,14 +84,16 @@ src/financeguru/
 │   ├── stock.py                  # Stock dataclass
 │   ├── stock_tip.py              # StockTip dataclass
 │   ├── debt.py                   # Debt dataclass
-│   └── income.py                 # Income dataclass (with pay_days for specific-days frequency)
+│   ├── income.py                 # Income dataclass (with pay_days for specific-days frequency)
+│   └── goal.py                   # Goal dataclass + months_remaining() + monthly_savings()
 ├── repositories/
 │   ├── bills.py                  # DB access for bills
-│   ├── payments.py               # DB access for payments
+│   ├── payments.py               # DB access for payments (includes total_paid_by_bill())
 │   ├── stocks.py                 # DB access for stocks
 │   ├── stock_tips.py             # DB access for stock tips + analyst data update
 │   ├── debts.py                  # DB access for debts
-│   └── incomes.py                # DB access for incomes
+│   ├── incomes.py                # DB access for incomes
+│   └── goals.py                  # DB access for goals
 └── views/
     ├── main_window.py            # QMainWindow with QTabWidget; refreshes all tabs on focus
     ├── context_menu.py           # Reusable attach_row_menu helper for right-click table menus
@@ -106,7 +109,9 @@ src/financeguru/
     ├── debt_dialog.py            # Add/Edit debt form
     ├── debt_snowball_view.py     # Debt Snowball tab — CRUD + simulation + schedule + lump sums
     ├── income_dialog.py          # Add/Edit income form (all frequencies + day-picker for specific days)
-    └── salary_view.py            # Income tab — income list + budget visualizer + savings slider
+    ├── salary_view.py            # Income tab — income list + budget visualizer + savings slider
+    ├── goal_dialog.py            # Add/Edit goal form with live monthly-savings preview
+    └── goals_view.py             # Goals tab — goal table + bill sync + Amount Left tracking
 share/
 ├── applications/
 │   └── financeguru.desktop       # XDG desktop entry for app menu
@@ -115,6 +120,14 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-06-07 (Evening) — Goals Budgeting Tab**
+
+- Added a new **Goals** tab (eighth tab, after Debt Snowball). Enter a goal name, total price, and target month; the app computes the monthly savings contribution and auto-creates a recurring "Goal" bill so the commitment appears in Bills and Dashboard.
+- The "Afford By" date picker shows month + year only and snaps to the last day of the chosen month.
+- An **Amount Left** column tracks `price − sum(payments against the goal's bill)`, floored at $0 — decreases each time the Goal bill is marked paid.
+- Editing a goal updates its linked bill. Deleting a goal (with a confirmation dialog) also deletes its linked bill.
+- Added `payment_repo.total_paid_by_bill()` — a single grouped-sum query returning a `dict[int, Decimal]` used by the Goals tab for efficient Amount Left computation.
 
 **2026-06-07 (PM) — Right-Click Menus, Payments Search, and UX Polish**
 
