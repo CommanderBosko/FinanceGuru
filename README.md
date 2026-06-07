@@ -1,21 +1,22 @@
 # Finance Guru
 
-A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, and visualizes a salary budget with savings projections. Built with PySide6 and SQLite, packaged as a Nix flake.
+A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, and visualizes an income budget with savings projections. Built with PySide6 and SQLite, packaged as a Nix flake.
 
 ## Current Status
 
-Active development — seven tabs fully implemented (Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Salary). All features are functional and persisted to SQLite. The app launches from the system app menu on NixOS with a custom icon.
+Active development — seven tabs fully implemented (Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income). All features are functional and persisted to SQLite. The app launches from the system app menu on NixOS with a custom icon.
 
 ## Features
 
 - **Dashboard** — Bills due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Auto-refreshes on tab focus.
 - **Bills** — Full CRUD for recurring bills (name, amount, due day, frequency). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
-- **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A "This month only" checkbox (on by default) filters the list to the current calendar month; uncheck to see the full history.
+- **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A "This month only" checkbox (on by default) filters the list to the current calendar month; uncheck to see the full history. A live search bar filters by bill name, amount, date, or notes.
 - **Stocks** — Portfolio holdings with ticker, shares, purchase price, date, total cost basis, and live market price / market value / gain-loss fetched via yfinance. Green/red gain-loss colouring. Refresh Prices button triggers a background QThread fetch.
 - **Stock Tips** — Track personal tips (ticker, action, target price, confidence, notes). Refresh Analyst Data fetches yfinance analyst consensus and mean price target, caching them in the DB without overwriting user-entered values.
 - **Debt Snowball** — Track debts (balance, APR, minimum payment). A pure-Python month-by-month simulator computes both Snowball and Avalanche payoff strategies with rolling extra payments. Side-by-side summary shows total interest paid and time saved per strategy. A per-debt monthly payment schedule table shows exactly how each month's payment is allocated. One-time lump-sum extra payments (windfalls, bonuses, tax refunds) can be injected at a specific month and cascade across debts.
-- **Salary** — Enter income sources at any frequency (weekly, biweekly, semimonthly, monthly, annual, or specific calendar days). All amounts are normalized to a monthly figure. Monthly bills are subtracted to show surplus spending money. A savings-rate slider splits the surplus into a proportional save-vs-spend bar with monthly and annual projections.
-- **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode.
+- **Income** — Enter income sources at any frequency (weekly, biweekly, semimonthly, monthly, annual, or specific calendar days). All amounts are normalized to a monthly figure. Monthly bills are subtracted to show surplus spending money. A savings-rate slider splits the surplus into a proportional save-vs-spend bar with monthly and annual projections.
+- **Right-click context menus** — All six data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
+- **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
 - **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix.
 
 ## Getting Started
@@ -92,11 +93,12 @@ src/financeguru/
 │   └── incomes.py                # DB access for incomes
 └── views/
     ├── main_window.py            # QMainWindow with QTabWidget; refreshes all tabs on focus
+    ├── context_menu.py           # Reusable attach_row_menu helper for right-click table menus
     ├── dashboard_view.py         # Monthly bill status summary
     ├── bill_dialog.py            # Add/Edit bill form
     ├── bills_view.py             # Bills tab — table + Add/Edit/Delete/Mark Paid
     ├── payment_dialog.py         # Log payment form
-    ├── payments_view.py          # Payments tab — history + Add/Edit/Delete + month filter
+    ├── payments_view.py          # Payments tab — history + Add/Edit/Delete + month filter + search
     ├── stock_dialog.py           # Add/Edit stock holding form
     ├── stocks_view.py            # Stocks tab — holdings table + live prices
     ├── stock_tip_dialog.py       # Add/Edit stock tip form
@@ -104,7 +106,7 @@ src/financeguru/
     ├── debt_dialog.py            # Add/Edit debt form
     ├── debt_snowball_view.py     # Debt Snowball tab — CRUD + simulation + schedule + lump sums
     ├── income_dialog.py          # Add/Edit income form (all frequencies + day-picker for specific days)
-    └── salary_view.py            # Salary tab — income list + budget visualizer + savings slider
+    └── salary_view.py            # Income tab — income list + budget visualizer + savings slider
 share/
 ├── applications/
 │   └── financeguru.desktop       # XDG desktop entry for app menu
@@ -113,6 +115,13 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-06-07 (PM) — Right-Click Menus, Payments Search, and UX Polish**
+
+- Added a reusable `attach_row_menu` helper (`context_menu.py`) and wired right-click context menus into all six data tables. Each menu mirrors the tab's toolbar buttons and reuses the same handlers; right-clicking selects the row under the cursor first.
+- Added a live **search bar** to the Payments tab toolbar (right-aligned). Case-insensitive substring search across bill name, amount, date, and notes; filters in real time on every keystroke.
+- Renamed the **"Salary" tab label to "Income"** in `main_window.py` (module and class names are unchanged).
+- Fixed the **app icon missing from installed NixOS packages**: `flake.nix` now installs the hicolor SVG into the store prefix so `QIcon.fromTheme` resolves correctly outside `nix develop`.
 
 **2026-06-07 — Payments Edit Button and Current-Month Filter**
 

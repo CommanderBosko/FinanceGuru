@@ -2,6 +2,59 @@
 
 ---
 
+## Session: 2026-06-07 (PM) — Right-Click Menus, Payments Search, and UX Polish
+
+**Duration Estimate**: ~1 hour (17:16 – 17:43 based on commit timestamps)
+**Session Focus**: Round out the app's UX by adding keyboard-alternative context menus to every data table and a live search bar to the Payments tab. Also renamed the Salary tab label to "Income" and fixed the icon missing from installed NixOS packages.
+
+### What Was Accomplished
+
+- Renamed the Salary tab display label from "Salary" to "Income" in `main_window.py`; the underlying `SalaryView` module and class name are unchanged.
+- Fixed the app icon missing from installed NixOS packages: `flake.nix` `postInstall` previously only copied the `.desktop` file, so `QIcon.fromTheme("financeguru")` found no icon in the store for installed packages. The hicolor SVG is now installed to the prefix, making the icon work both in `nix develop` and on machines using the installed package.
+- Created `src/financeguru/views/context_menu.py` — a reusable `attach_row_menu(table, actions)` helper. Right-clicking selects the row under the cursor first; actions with `needs_selection=True` are disabled when nothing is selected; `None` entries in the action list render as separators.
+- Wired `attach_row_menu` into all six data tables: Bills, Payments, Income (SalaryView), Stocks, Stock Tips, and Debt Snowball. Each menu mirrors the tab's toolbar buttons and reuses the same handlers — no duplicate logic.
+- Added a live search bar to the Payments toolbar (to the right of the existing controls, right-aligned via a stretch spacer). The filter is applied client-side in `_refresh()`: case-insensitive substring match across bill name, displayed amount string, date, and notes. The `QLineEdit.textChanged` signal re-runs `_refresh` on every keystroke. A clear button (`setClearButtonEnabled(True)`) lets the user reset the filter instantly.
+
+### Files Changed
+
+- `src/financeguru/views/main_window.py` — Tab label changed from `"Salary"` to `"Income"`
+- `flake.nix` — `postInstall` extended to also install the hicolor SVG icon to the store output
+- `src/financeguru/views/context_menu.py` — New module: `ActionSpec` type alias and `attach_row_menu` helper (new file)
+- `src/financeguru/views/bills_view.py` — `attach_row_menu` wired in with Add/Edit/Delete/Mark Paid actions
+- `src/financeguru/views/payments_view.py` — `attach_row_menu` wired in; search `QLineEdit` added to toolbar; `_refresh` updated to apply search filter after the month filter
+- `src/financeguru/views/salary_view.py` — `attach_row_menu` wired in with Add/Edit/Delete actions
+- `src/financeguru/views/stocks_view.py` — `attach_row_menu` wired in with Add/Edit/Delete/Refresh actions
+- `src/financeguru/views/stock_tips_view.py` — `attach_row_menu` wired in with Add/Edit/Delete/Refresh Analyst Data actions
+- `src/financeguru/views/debt_snowball_view.py` — `attach_row_menu` wired in with Add/Edit/Delete actions
+
+### Commits This Session
+
+- `db3e9c3` — feat(ui): rename Salary tab label to "Income"
+- `7aa05cd` — fix(packaging): install app icon into store output
+- `cbebb80` — feat(ui): add right-click context menus to all data tables
+- `afe95d2` — feat(payments): add search bar filtering bills, amounts, dates, notes
+- `108db6c` — style(payments): right-align the search bar in the toolbar
+
+### Decisions Made
+
+- **Reusable helper over per-view duplication** — `attach_row_menu` takes a generic `list[ActionSpec | None]`; every view passes its own callbacks. Adding menus to six tables required zero repeated logic.
+- **Client-side search filter** — Applied in Python after `get_all()`, chained with the existing month filter. The payments dataset is small enough that this is never a bottleneck, and it avoids complicating the repository interface.
+- **Match on displayed strings, not raw values** — The search checks the `Amount` column's display text (e.g., `"$42.00"`) rather than the raw `Decimal`, so users can search by what they see in the table.
+- **`QLineEdit` right-aligned** — Stretch spacer before the search widget mirrors a standard browser/finder search bar placement and keeps the action buttons visually grouped on the left.
+
+### Issues Encountered
+
+- None. All changes are additive; no schema or model changes required.
+
+### Remaining / Next Session
+
+- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages` (top priority).
+- Write pytest tests for the repository layer (`bills`, `payments`, `stocks`, `debts`, `incomes`, `stock_tips`) using an in-memory SQLite database.
+- Add user-visible error feedback when yfinance price or analyst data fetch fails (network error, rate limit).
+- Consider a reporting/charts tab using the salary, debt, and bill data now available.
+
+---
+
 ## Session: 2026-06-07 — Payments Edit Button and Current-Month Filter
 
 **Duration Estimate**: Short follow-on session (same calendar day as previous session)

@@ -1,20 +1,21 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-06-07_
+_Last updated: 2026-06-07 (PM session)_
 
 ## Current Project State
 
-The app has seven fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, and Salary — all backed by SQLite and packaged as a Nix flake. A follow-on session today completed the Payments tab UX: in-place editing of payment records and a current-month filter toggle now match the Bills tab's interaction patterns.
+The app has seven fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, and Income — all backed by SQLite and packaged as a Nix flake. The most recent session added right-click context menus to every data table, a live search bar to the Payments tab, and fixed the installed-package icon. The tab previously labeled "Salary" is now labeled "Income".
 
 **What works:**
 - Full Bills CRUD with Mark Paid (creates a linked Payment record; cascade-delete on bill removal)
-- Payment history log with Add, Edit (button and double-click), and Delete; "This month only" checkbox filters to the current YYYY-MM- prefix by default; unchecking shows full history
+- Payment history log with Add, Edit (button and double-click), and Delete; "This month only" checkbox filters to the current YYYY-MM- prefix by default; unchecking shows full history; live search bar filters by bill name, amount, date, or notes
+- Right-click context menus on all six data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball) — mirrors each tab's toolbar actions via the reusable `attach_row_menu` helper in `context_menu.py`; right-clicking selects the row under the cursor first
 - Stock portfolio table with Add/Edit/Delete and live price refresh via yfinance QThread (with 15s per-ticker timeout and button re-enable on completion)
 - Dashboard showing monthly bill status (Paid / Overdue / Upcoming) with cost summary, auto-refreshing on tab focus
 - Stock Tips tab: track personal tips with analyst consensus and mean price targets fetched from yfinance; cached in `stock_tips` table
 - Debt Snowball tab: track debts with balance, APR, and minimum payment; month-by-month simulator computes both Snowball and Avalanche payoff schedules in exact `Decimal` arithmetic; side-by-side comparison; per-debt monthly payment schedule table; one-time lump-sum extra payments (windfalls)
-- Salary tab: enter paychecks at any frequency (weekly through annual, or specific calendar days), normalized to a monthly figure using exact `Decimal` division; subtracts monthly bills to show surplus; savings-rate slider with proportional save-vs-spend bar and monthly/annual projections
-- App icon in system app menu, window title bar, and taskbar
+- Income tab (formerly "Salary"): enter paychecks at any frequency (weekly through annual, or specific calendar days), normalized to a monthly figure using exact `Decimal` division; subtracts monthly bills to show surplus; savings-rate slider with proportional save-vs-spend bar and monthly/annual projections
+- App icon in system app menu, window title bar, and taskbar — now correctly installed into the Nix store prefix (was previously missing for installed packages, only worked in `nix develop`)
 - Nix `buildPythonApplication` packaging with desktop entry and icon installed to prefix
 - All monetary values represented as `Decimal` throughout models, repositories, views, and simulation — no IEEE-754 float error
 - `sqlite3` adapter registered so `Decimal` binds transparently to `REAL` columns; existing databases load unchanged
@@ -44,6 +45,10 @@ The app has seven fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Recent Decisions
 
+- **Reusable `attach_row_menu` helper** — A single `context_menu.py` module handles the `CustomContextMenu` setup for all six data tables. Each caller passes a list of `(label, callback, needs_selection)` tuples; `None` entries become separators. Avoids duplicating 15–20 lines of boilerplate per view.
+- **Search filter chains with month filter** — `_refresh()` applies the search string after the month filter, operating on the already-filtered row list. Keeps both filters independent and easy to reason about.
+- **Match on displayed amount string** — Search checks the `Amount` column's display text (e.g., `"$42.00"`) rather than the raw `Decimal`, so users find rows by what they see.
+- **Icon installed to Nix store** — `flake.nix` `postInstall` now copies the hicolor SVG alongside the `.desktop` file; `QIcon.fromTheme` can resolve it at runtime for installed packages (previously only worked in `nix develop`).
 - **Client-side month filter in Payments** — `_refresh()` filters `get_all()` results in Python rather than adding a SQL `WHERE` clause; keeps the repository interface simple and the dataset is small enough that this is never a bottleneck.
 - **`payment: dict` arg to `PaymentDialog`** — Pre-fill accepts the raw `sqlite3.Row`/dict from `_rows` directly, avoiding an extra conversion step and matching how the Bills dialog was structured.
 - **Edit mirrors Bills tab button layout exactly** — Add, Edit, Delete left-aligned; stretch after; enabled/disabled by selection. Consistent UX across tabs.
