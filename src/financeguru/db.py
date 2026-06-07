@@ -1,9 +1,14 @@
 import os
 import re
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# Money is handled as Decimal in the app but stored in REAL columns; tell sqlite3
+# how to bind a Decimal parameter. Cent-quantized values round-trip exactly.
+sqlite3.register_adapter(Decimal, float)
 
 DB_DIR = Path.home() / ".local" / "share" / "financeguru"
 DB_PATH = DB_DIR / "finance.db"

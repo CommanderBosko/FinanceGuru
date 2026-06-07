@@ -1,5 +1,6 @@
 from financeguru.db import get_connection
 from financeguru.models.bill import Bill
+from financeguru.money import to_decimal
 
 
 def get_all() -> list[Bill]:
@@ -40,7 +41,7 @@ def _row_to_bill(row) -> Bill:
     return Bill(
         id=row["id"],
         name=row["name"],
-        amount=row["amount"],
+        amount=to_decimal(row["amount"]),
         due_day=row["due_day"],
         recurrence=row["recurrence"],
         is_active=bool(row["is_active"]),

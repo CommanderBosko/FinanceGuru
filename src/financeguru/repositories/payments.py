@@ -1,5 +1,6 @@
 from financeguru.db import get_connection
 from financeguru.models.payment import Payment
+from financeguru.money import to_decimal
 
 
 def get_all() -> list[dict]:
@@ -11,7 +12,12 @@ def get_all() -> list[dict]:
             LEFT JOIN bills b ON p.bill_id = b.id
             ORDER BY p.paid_date DESC
         """).fetchall()
-    return [dict(r) for r in rows]
+    records = []
+    for r in rows:
+        rec = dict(r)
+        rec["amount"] = to_decimal(rec["amount"])
+        records.append(rec)
+    return records
 
 
 def add(payment: Payment) -> int | None:

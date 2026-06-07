@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 
 from financeguru.models.stock import Stock
+from financeguru.money import cents, to_decimal
 from financeguru.validators import normalize_ticker
 
 
@@ -24,14 +25,14 @@ class StockDialog(QDialog):
         self._shares = QDoubleSpinBox()
         self._shares.setRange(0.0001, 999_999.0)
         self._shares.setDecimals(4)
-        self._shares.setValue(stock.shares if stock else 1.0)
+        self._shares.setValue(float(stock.shares) if stock else 1.0)
         form.addRow("Shares", self._shares)
 
         self._price = QDoubleSpinBox()
         self._price.setPrefix("$")
         self._price.setRange(0.01, 999_999.99)
         self._price.setDecimals(2)
-        self._price.setValue(stock.purchase_price if stock else 0.0)
+        self._price.setValue(float(stock.purchase_price) if stock else 0.0)
         form.addRow("Purchase Price", self._price)
 
         purchase_date = QDate.fromString(stock.purchase_date, "yyyy-MM-dd") if stock else QDate.currentDate()
@@ -68,8 +69,8 @@ class StockDialog(QDialog):
         return Stock(
             id=self._stock_id,
             ticker=self._ticker.text().strip().upper(),
-            shares=self._shares.value(),
-            purchase_price=self._price.value(),
+            shares=to_decimal(self._shares.value()),
+            purchase_price=cents(self._price.value()),
             purchase_date=self._date.date().toString("yyyy-MM-dd"),
             notes=self._notes.toPlainText().strip() or None,
         )

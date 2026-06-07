@@ -1,11 +1,12 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Optional
 
 
 @dataclass
 class Bill:
     name: str
-    amount: float
+    amount: Decimal
     due_day: int
     recurrence: str = "monthly"
     is_active: bool = True

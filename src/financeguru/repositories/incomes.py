@@ -1,12 +1,13 @@
 from financeguru.db import get_connection
 from financeguru.models.income import Income
+from financeguru.money import to_decimal
 
 
 def _row_to_income(row) -> Income:
     return Income(
         id=row["id"],
         name=row["name"],
-        amount=row["amount"],
+        amount=to_decimal(row["amount"]),
         frequency=row["frequency"],
         pay_days=row["pay_days"],
         notes=row["notes"],

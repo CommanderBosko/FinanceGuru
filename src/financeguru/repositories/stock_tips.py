@@ -1,5 +1,6 @@
 from financeguru.db import get_connection
 from financeguru.models.stock_tip import StockTip
+from financeguru.money import optional_decimal
 
 
 def _row_to_tip(row) -> StockTip:
@@ -7,12 +8,12 @@ def _row_to_tip(row) -> StockTip:
         id=row["id"],
         ticker=row["ticker"],
         action=row["action"],
-        target_price=row["target_price"],
+        target_price=optional_decimal(row["target_price"]),
         confidence=row["confidence"],
         notes=row["notes"],
         added_date=row["added_date"],
         analyst_action=row["analyst_action"],
-        analyst_target=row["analyst_target"],
+        analyst_target=optional_decimal(row["analyst_target"]),
         analyst_count=row["analyst_count"],
         analyst_updated=row["analyst_updated"],
     )

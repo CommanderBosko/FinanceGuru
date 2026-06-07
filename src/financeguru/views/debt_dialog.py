@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 )
 
 from financeguru.models.debt import Debt
+from financeguru.money import cents
 
 
 class DebtDialog(QDialog):
@@ -54,9 +55,9 @@ class DebtDialog(QDialog):
 
         if debt:
             self._name.setText(debt.name)
-            self._balance.setValue(debt.balance)
-            self._rate.setValue(debt.interest_rate)
-            self._minimum.setValue(debt.minimum_payment)
+            self._balance.setValue(float(debt.balance))
+            self._rate.setValue(float(debt.interest_rate))
+            self._minimum.setValue(float(debt.minimum_payment))
             self._notes.setPlainText(debt.notes or "")
 
     def _on_accept(self) -> None:
@@ -69,8 +70,8 @@ class DebtDialog(QDialog):
         return Debt(
             id=self._debt.id if self._debt else 0,
             name=self._name.text().strip(),
-            balance=self._balance.value(),
-            interest_rate=self._rate.value(),
-            minimum_payment=self._minimum.value(),
+            balance=cents(self._balance.value()),
+            interest_rate=cents(self._rate.value()),
+            minimum_payment=cents(self._minimum.value()),
             notes=self._notes.toPlainText().strip() or None,
         )

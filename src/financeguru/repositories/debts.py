@@ -1,14 +1,15 @@
 from financeguru.db import get_connection
 from financeguru.models.debt import Debt
+from financeguru.money import to_decimal
 
 
 def _row_to_debt(row) -> Debt:
     return Debt(
         id=row["id"],
         name=row["name"],
-        balance=row["balance"],
-        interest_rate=row["interest_rate"],
-        minimum_payment=row["minimum_payment"],
+        balance=to_decimal(row["balance"]),
+        interest_rate=to_decimal(row["interest_rate"]),
+        minimum_payment=to_decimal(row["minimum_payment"]),
         notes=row["notes"],
     )
 

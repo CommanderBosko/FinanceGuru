@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 
 from financeguru.models.bill import Bill
 from financeguru.models.payment import Payment
+from financeguru.money import cents
 from financeguru.repositories import bills as bill_repo
 
 _NO_BILL = "— No bill —"
@@ -56,13 +57,13 @@ class PaymentDialog(QDialog):
     def _on_bill_changed(self, index: int) -> None:
         bill: Bill | None = self._bill_combo.itemData(index)
         if bill is not None:
-            self._amount.setValue(bill.amount)
+            self._amount.setValue(float(bill.amount))
 
     def payment(self) -> Payment:
         bill: Bill | None = self._bill_combo.currentData()
         return Payment(
             bill_id=bill.id if bill else None,
-            amount=self._amount.value(),
+            amount=cents(self._amount.value()),
             paid_date=self._date.date().toString("yyyy-MM-dd"),
             notes=self._notes.toPlainText().strip() or None,
         )

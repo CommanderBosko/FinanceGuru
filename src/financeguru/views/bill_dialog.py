@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QComboBox, QSpinBox, QTextEdit, QVBoxLayout,
 )
 from financeguru.models.bill import Bill
+from financeguru.money import cents
 
 
 class BillDialog(QDialog):
@@ -21,7 +22,7 @@ class BillDialog(QDialog):
         self._amount.setPrefix("$")
         self._amount.setRange(0.0, 99_999.99)
         self._amount.setDecimals(2)
-        self._amount.setValue(bill.amount if bill else 0.0)
+        self._amount.setValue(float(bill.amount) if bill else 0.0)
         form.addRow("Amount", self._amount)
 
         self._due_day = QSpinBox()
@@ -53,7 +54,7 @@ class BillDialog(QDialog):
         return Bill(
             id=self._bill_id,
             name=self._name.text().strip(),
-            amount=self._amount.value(),
+            amount=cents(self._amount.value()),
             due_day=self._due_day.value(),
             recurrence=self._recurrence.currentText(),
             notes=self._notes.toPlainText().strip() or None,

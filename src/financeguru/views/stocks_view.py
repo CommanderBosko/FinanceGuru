@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 )
 
 from financeguru.models.stock import Stock
+from financeguru.money import ZERO, to_decimal
 from financeguru.prices import PriceFetcher
 from financeguru.repositories import stocks as stock_repo
 from financeguru.views.stock_dialog import StockDialog
@@ -65,14 +66,15 @@ class StocksView(QWidget):
     def _refresh(self) -> None:
         self._stocks = stock_repo.get_all()
         self._table.setRowCount(len(self._stocks))
-        total_cost = 0.0
-        total_market = 0.0
+        total_cost = ZERO
+        total_market = ZERO
         has_prices = bool(self._prices)
 
         for row, stock in enumerate(self._stocks):
             cost_basis = stock.shares * stock.purchase_price
             total_cost += cost_basis
-            current = self._prices.get(stock.ticker)
+            raw_price = self._prices.get(stock.ticker)
+            current = to_decimal(raw_price) if raw_price is not None else None
 
             def _right(text: str) -> QTableWidgetItem:
                 item = QTableWidgetItem(text)

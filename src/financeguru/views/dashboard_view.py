@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from financeguru.money import ZERO
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import payments as payment_repo
 
@@ -59,8 +60,8 @@ class DashboardView(QWidget):
         self._month_label.setText(today.strftime("%B %Y"))
         self._bills_table.setRowCount(len(bills))
 
-        total = 0.0
-        paid = 0.0
+        total = ZERO
+        paid = ZERO
 
         for row, bill in enumerate(bills):
             is_paid = bill.id in paid_ids

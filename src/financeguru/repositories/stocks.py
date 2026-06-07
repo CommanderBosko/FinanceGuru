@@ -1,5 +1,6 @@
 from financeguru.db import get_connection
 from financeguru.models.stock import Stock
+from financeguru.money import to_decimal
 
 
 def get_all() -> list[Stock]:
@@ -36,8 +37,8 @@ def _row_to_stock(row) -> Stock:
     return Stock(
         id=row["id"],
         ticker=row["ticker"],
-        shares=row["shares"],
-        purchase_price=row["purchase_price"],
+        shares=to_decimal(row["shares"]),
+        purchase_price=to_decimal(row["purchase_price"]),
         purchase_date=row["purchase_date"],
         notes=row["notes"],
     )

@@ -1,6 +1,9 @@
 """Normalization helpers for turning incomes and bills into monthly figures."""
+from decimal import Decimal
+
 from financeguru.models.bill import Bill
 from financeguru.models.income import Income
+from financeguru.money import ZERO
 
 # Frequency value for "paid on specific calendar days of the month".
 SPECIFIC_DAYS = "specific days"
@@ -8,12 +11,14 @@ SPECIFIC_DAYS = "specific days"
 # Pay frequencies and how many times they occur per month, on average.
 INCOME_FREQUENCIES = ["weekly", "biweekly", "semimonthly", "monthly", "annual", SPECIFIC_DAYS]
 
+# (paychecks, months) — kept as exact integer ratios so the monthly figure is
+# computed with Decimal division rather than a pre-rounded float.
 _MONTHLY_FACTOR = {
-    "weekly": 52 / 12,        # 52 paychecks / 12 months
-    "biweekly": 26 / 12,      # 26 paychecks / 12 months
-    "semimonthly": 2.0,       # twice a month
-    "monthly": 1.0,
-    "annual": 1 / 12,
+    "weekly": (52, 12),       # 52 paychecks / 12 months
+    "biweekly": (26, 12),     # 26 paychecks / 12 months
+    "semimonthly": (2, 1),    # twice a month
+    "monthly": (1, 1),
+    "annual": (1, 12),
 }
 
 
@@ -34,24 +39,25 @@ def format_pay_days(raw: str | None) -> str:
     return ", ".join(str(d) for d in parse_pay_days(raw))
 
 
-def monthly_income(income: Income) -> float:
+def monthly_income(income: Income) -> Decimal:
     """Income amount expressed as a per-month figure."""
     if income.frequency == SPECIFIC_DAYS:
         # One paycheck of `amount` on each selected day of the month.
         return income.amount * len(parse_pay_days(income.pay_days))
-    return income.amount * _MONTHLY_FACTOR.get(income.frequency, 1.0)
+    paychecks, months = _MONTHLY_FACTOR.get(income.frequency, (1, 1))
+    return income.amount * paychecks / months
 
 
-def monthly_bill(bill: Bill) -> float:
+def monthly_bill(bill: Bill) -> Decimal:
     """Active bill cost expressed as a per-month figure.
 
     Yearly bills are spread across 12 months; one-time bills are not a
     recurring monthly obligation and are excluded.
     """
     if not bill.is_active:
-        return 0.0
+        return ZERO
     if bill.recurrence == "yearly":
         return bill.amount / 12
     if bill.recurrence == "one-time":
-        return 0.0
+        return ZERO
     return bill.amount  # monthly

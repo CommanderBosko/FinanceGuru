@@ -1,26 +1,30 @@
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 
 from financeguru.models.debt import Debt
+from financeguru.money import ZERO, CENT, cents, to_decimal
 
 _MAX_MONTHS = 600
+_MONTHS_PER_YEAR = Decimal(12)
+_PERCENT = Decimal(100)
 
 
 @dataclass
 class DebtResult:
     name: str
-    original_balance: float
-    apr: float
-    minimum_payment: float
+    original_balance: Decimal
+    apr: Decimal
+    minimum_payment: Decimal
     payoff_month: int
-    interest_paid: float
+    interest_paid: Decimal
 
 
 @dataclass
 class ScheduleMonth:
     month: int
-    payments: list[float]   # amount paid this month, aligned with PayoffPlan.debt_order
-    total: float
+    payments: list[Decimal]   # amount paid this month, aligned with PayoffPlan.debt_order
+    total: Decimal
 
 
 @dataclass
@@ -30,14 +34,14 @@ class PayoffPlan:
     debt_order: list[str]            # debt names in payment-priority order (schedule columns)
     schedule: list[ScheduleMonth]    # per-month payment breakdown
     total_months: int
-    total_interest: float
+    total_interest: Decimal
     capped: bool                     # True if simulation hit the 600-month limit
 
 
 def calculate(
     debts: list[Debt],
-    extra: float,
-    lump_sums: list[tuple[int, float]] | None = None,
+    extra: float | Decimal,
+    lump_sums: list[tuple[int, float | Decimal]] | None = None,
 ) -> tuple[PayoffPlan, PayoffPlan]:
     snowball = _simulate("Snowball", sorted(debts, key=lambda d: d.balance), extra, lump_sums)
     avalanche = _simulate("Avalanche", sorted(debts, key=lambda d: -d.interest_rate), extra, lump_sums)
@@ -55,36 +59,37 @@ def payoff_date(payoff_month: int) -> str:
 def _simulate(
     strategy: str,
     ordered: list[Debt],
-    extra: float,
-    lump_sums: list[tuple[int, float]] | None = None,
+    extra: float | Decimal,
+    lump_sums: list[tuple[int, float | Decimal]] | None = None,
 ) -> PayoffPlan:
     if not ordered:
         return PayoffPlan(strategy=strategy, debt_results=[], debt_order=[],
-                          schedule=[], total_months=0, total_interest=0.0, capped=False)
+                          schedule=[], total_months=0, total_interest=ZERO, capped=False)
 
     # One-time payments collapsed to {month: total injected that month}
-    lump_by_month: dict[int, float] = {}
-    for m, amount in (lump_sums or []):
+    lump_by_month: dict[int, Decimal] = {}
+    for m, raw in (lump_sums or []):
+        amount = to_decimal(raw)
         if m >= 1 and amount > 0:
-            lump_by_month[m] = lump_by_month.get(m, 0.0) + amount
+            lump_by_month[m] = lump_by_month.get(m, ZERO) + amount
 
     states = [
-        {"debt": d, "balance": d.balance, "interest_paid": 0.0, "payoff_month": None}
+        {"debt": d, "balance": d.balance, "interest_paid": ZERO, "payoff_month": None}
         for d in ordered
     ]
-    rolling_extra = max(0.0, extra)
+    rolling_extra = max(ZERO, to_decimal(extra))
     month = 0
     capped = False
     schedule: list[ScheduleMonth] = []
 
     while month < _MAX_MONTHS:
         month += 1
-        paid = [0.0] * len(states)
+        paid = [ZERO] * len(states)
 
         # Accrue monthly interest on each active debt
         for s in states:
             if s["balance"] > 0:
-                interest = s["balance"] * (s["debt"].interest_rate / 100.0 / 12.0)
+                interest = s["balance"] * (s["debt"].interest_rate / _PERCENT / _MONTHS_PER_YEAR)
                 s["balance"] += interest
                 s["interest_paid"] += interest
 
@@ -92,31 +97,31 @@ def _simulate(
         for i, s in enumerate(states):
             if s["balance"] > 0:
                 pay = min(s["balance"], s["debt"].minimum_payment)
-                s["balance"] = max(0.0, s["balance"] - pay)
+                s["balance"] = max(ZERO, s["balance"] - pay)
                 paid[i] += pay
 
         # Roll extra (recurring snowball + any one-time lump this month) toward
         # the highest-priority unpaid debt
-        remaining = rolling_extra + lump_by_month.get(month, 0.0)
+        remaining = rolling_extra + lump_by_month.get(month, ZERO)
         for i, s in enumerate(states):
             if s["balance"] <= 0 or remaining <= 0:
                 continue
             pay = min(s["balance"], remaining)
-            s["balance"] = max(0.0, s["balance"] - pay)
+            s["balance"] = max(ZERO, s["balance"] - pay)
             remaining -= pay
             paid[i] += pay
 
         # Mark paid-off debts and grow rolling extra
         for s in states:
-            if s["balance"] < 0.01 and s["payoff_month"] is None:
-                s["balance"] = 0.0
+            if s["balance"] < CENT and s["payoff_month"] is None:
+                s["balance"] = ZERO
                 s["payoff_month"] = month
                 rolling_extra += s["debt"].minimum_payment
 
         schedule.append(ScheduleMonth(
             month=month,
-            payments=[round(p, 2) for p in paid],
-            total=round(sum(paid), 2),
+            payments=[cents(p) for p in paid],
+            total=cents(sum(paid, ZERO)),
         ))
 
         if all(s["balance"] == 0 for s in states):
@@ -135,7 +140,7 @@ def _simulate(
                 apr=s["debt"].interest_rate,
                 minimum_payment=s["debt"].minimum_payment,
                 payoff_month=s["payoff_month"],
-                interest_paid=round(s["interest_paid"], 2),
+                interest_paid=cents(s["interest_paid"]),
             )
             for s in states
         ],
@@ -148,6 +153,6 @@ def _simulate(
         debt_order=[d.name for d in ordered],
         schedule=schedule,
         total_months=month,
-        total_interest=round(sum(r.interest_paid for r in results), 2),
+        total_interest=cents(sum((r.interest_paid for r in results), ZERO)),
         capped=capped,
     )

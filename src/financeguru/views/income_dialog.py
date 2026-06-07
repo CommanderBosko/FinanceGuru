@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 
 from financeguru.budget import INCOME_FREQUENCIES, SPECIFIC_DAYS, parse_pay_days
 from financeguru.models.income import Income
+from financeguru.money import cents
 
 
 class IncomeDialog(QDialog):
@@ -25,7 +26,7 @@ class IncomeDialog(QDialog):
         self._amount.setPrefix("$")
         self._amount.setRange(0.0, 9_999_999.99)
         self._amount.setDecimals(2)
-        self._amount.setValue(income.amount if income else 0.0)
+        self._amount.setValue(float(income.amount) if income else 0.0)
         form.addRow("Amount per Paycheck", self._amount)
 
         self._frequency = QComboBox()
@@ -89,7 +90,7 @@ class IncomeDialog(QDialog):
         return Income(
             id=self._income_id,
             name=self._name.text().strip(),
-            amount=self._amount.value(),
+            amount=cents(self._amount.value()),
             frequency=freq,
             pay_days=pay_days,
             notes=self._notes.toPlainText().strip() or None,

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from financeguru.models.stock_tip import StockTip
+from financeguru.money import cents
 from financeguru.prices import TipFetcher
 from financeguru.validators import normalize_ticker
 
@@ -71,7 +72,7 @@ class StockTipDialog(QDialog):
             idx = self._action.findText(tip.action)
             if idx >= 0:
                 self._action.setCurrentIndex(idx)
-            self._target.setValue(tip.target_price or 0.0)
+            self._target.setValue(float(tip.target_price) if tip.target_price else 0.0)
             self._confidence.setValue(tip.confidence)
             self._notes.setPlainText(tip.notes or "")
             self._ticker.setReadOnly(True)
@@ -117,7 +118,7 @@ class StockTipDialog(QDialog):
         self.accept()
 
     def tip(self) -> StockTip:
-        target = self._target.value() or None
+        target = cents(self._target.value()) or None
         return StockTip(
             id=self._tip.id if self._tip else 0,
             ticker=self._ticker.text().strip().upper(),
