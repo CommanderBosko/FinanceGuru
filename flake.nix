@@ -34,6 +34,8 @@
       postInstall = ''
         install -Dm644 share/applications/financeguru.desktop \
           $out/share/applications/financeguru.desktop
+        install -Dm644 share/icons/hicolor/scalable/apps/financeguru.svg \
+          $out/share/icons/hicolor/scalable/apps/financeguru.svg
       '';
 
       meta = {
