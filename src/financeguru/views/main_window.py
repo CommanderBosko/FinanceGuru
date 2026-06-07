@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._dashboard, "Dashboard")
         self._tabs.addTab(BillsView(), "Bills")
         self._tabs.addTab(PaymentsView(), "Payments")
-        self._tabs.addTab(self._salary, "Salary")
+        self._tabs.addTab(self._salary, "Income")
         self._tabs.addTab(StocksView(), "Stocks")
         self._tabs.addTab(StockTipsView(), "Stock Tips")
         self._tabs.addTab(DebtSnowballView(), "Debt Snowball")
