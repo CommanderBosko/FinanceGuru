@@ -11,6 +11,7 @@ from financeguru.models.payment import Payment
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.bill_dialog import BillDialog
+from financeguru.views.context_menu import attach_row_menu
 
 
 class BillsView(QWidget):
@@ -48,6 +49,14 @@ class BillsView(QWidget):
         self._btn_pay.clicked.connect(self._on_pay)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
+
+        attach_row_menu(self._table, [
+            ("Add Bill", self._on_add, False),
+            None,
+            ("Edit", self._on_edit, True),
+            ("Mark Paid", self._on_pay, True),
+            ("Delete", self._on_delete, True),
+        ])
 
         self._refresh()
 

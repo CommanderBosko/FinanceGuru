@@ -9,6 +9,7 @@ from financeguru.models.stock import Stock
 from financeguru.money import ZERO, to_decimal
 from financeguru.prices import PriceFetcher
 from financeguru.repositories import stocks as stock_repo
+from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_dialog import StockDialog
 
 _PLACEHOLDER = "—"
@@ -60,6 +61,15 @@ class StocksView(QWidget):
         self._btn_refresh.clicked.connect(self._on_refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
+
+        attach_row_menu(self._table, [
+            ("Add Position", self._on_add, False),
+            None,
+            ("Edit", self._on_edit, True),
+            ("Delete", self._on_delete, True),
+            None,
+            ("Refresh Prices", self._on_refresh, False),
+        ])
 
         self._refresh()
 

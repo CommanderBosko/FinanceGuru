@@ -10,6 +10,7 @@ from financeguru.budget import SPECIFIC_DAYS, format_pay_days, monthly_bill, mon
 from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import incomes as income_repo
+from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
 
 _COLS = ["Source", "Amount", "Frequency", "Monthly", "Notes"]
@@ -109,6 +110,12 @@ class SalaryView(QWidget):
         self._btn_delete.clicked.connect(self._on_delete)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
+        attach_row_menu(self._table, [
+            ("Add Paycheck", self._on_add, False),
+            None,
+            ("Edit", self._on_edit, True),
+            ("Delete", self._on_delete, True),
+        ])
         self._slider.valueChanged.connect(self._on_rate_changed)
         self._pct.valueChanged.connect(self._on_rate_changed)
 

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 
 from financeguru.repositories import payments as payment_repo
+from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.payment_dialog import PaymentDialog
 
 
@@ -47,6 +48,13 @@ class PaymentsView(QWidget):
         self._chk_current_only.toggled.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
+
+        attach_row_menu(self._table, [
+            ("Add Payment", self._on_add, False),
+            None,
+            ("Edit", self._on_edit, True),
+            ("Delete", self._on_delete, True),
+        ])
 
         self._refresh()
 

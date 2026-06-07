@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.debt import Debt
 from financeguru.repositories import debts as debt_repo
 from financeguru.snowball import PayoffPlan, calculate, payoff_date
+from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.debt_dialog import DebtDialog
 
 _COLS_DEBT = ["Name", "Balance", "APR %", "Min Payment", "Notes"]
@@ -154,6 +155,15 @@ class DebtSnowballView(QWidget):
         self._btn_calc.clicked.connect(self._on_calculate)
         self._debt_table.itemSelectionChanged.connect(self._on_selection_changed)
         self._debt_table.doubleClicked.connect(self._on_edit)
+        attach_row_menu(self._debt_table, [
+            ("Add Debt", self._on_add, False),
+            None,
+            ("Edit", self._on_edit, True),
+            ("Delete", self._on_delete, True),
+        ])
+        attach_row_menu(self._lump_table, [
+            ("Remove Selected", self._on_remove_lump, True),
+        ])
         self._schedule_strategy.currentTextChanged.connect(self._render_schedule)
         self._btn_add_lump.clicked.connect(self._on_add_lump)
         self._btn_remove_lump.clicked.connect(self._on_remove_lump)
