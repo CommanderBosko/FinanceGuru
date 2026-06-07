@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "financeguru"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["PySide6", "yfinance"]
+dependencies = ["PySide6>=6.7,<7", "yfinance>=1.3,<2"]
 
 [project.scripts]
 financeguru = "financeguru.main:main"

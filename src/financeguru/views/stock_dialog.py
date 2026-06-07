@@ -1,10 +1,11 @@
 from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
-    QLineEdit, QDateEdit, QTextEdit, QVBoxLayout,
+    QLineEdit, QDateEdit, QMessageBox, QTextEdit, QVBoxLayout,
 )
 
 from financeguru.models.stock import Stock
+from financeguru.validators import normalize_ticker
 
 
 class StockDialog(QDialog):
@@ -46,12 +47,22 @@ class StockDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(buttons)
+
+    def _on_accept(self) -> None:
+        if normalize_ticker(self._ticker.text()) is None:
+            QMessageBox.warning(
+                self, "Invalid Ticker",
+                "Enter a valid ticker symbol (letters, digits, '.', '-', up to 12 chars).",
+            )
+            self._ticker.setFocus()
+            return
+        self.accept()
 
     def stock(self) -> Stock:
         return Stock(

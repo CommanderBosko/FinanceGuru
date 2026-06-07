@@ -1,6 +1,9 @@
 import os
+import re
 import sqlite3
 from pathlib import Path
+
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 DB_DIR = Path.home() / ".local" / "share" / "financeguru"
 DB_PATH = DB_DIR / "finance.db"
@@ -20,7 +23,17 @@ def get_connection() -> sqlite3.Connection:
 
 
 def _ensure_column(conn, table: str, column: str, ddl: str) -> None:
-    """Add a column to an existing table if it isn't already present."""
+    """Add a column to an existing table if it isn't already present.
+
+    Table/column names and DDL are interpolated directly (SQLite can't bind
+    identifiers with ?), so callers MUST pass trusted constants. The identifier
+    checks below guard against a future caller accidentally introducing a SQL
+    injection sink.
+    """
+    if not _IDENT_RE.fullmatch(table) or not _IDENT_RE.fullmatch(column):
+        raise ValueError(f"unsafe identifier: {table!r}.{column!r}")
+    if not ddl.startswith(column + " "):
+        raise ValueError(f"ddl must start with the column name: {ddl!r}")
     existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column not in existing:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
@@ -48,7 +61,7 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS payments (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                bill_id     INTEGER REFERENCES bills(id),
+                bill_id     INTEGER REFERENCES bills(id) ON DELETE CASCADE,
                 amount      REAL    NOT NULL,
                 paid_date   TEXT    NOT NULL,
                 notes       TEXT

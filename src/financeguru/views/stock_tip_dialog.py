@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 
 from financeguru.models.stock_tip import StockTip
 from financeguru.prices import TipFetcher
+from financeguru.validators import normalize_ticker
 
 _ACTIONS = ["Watch", "Buy", "Strong Buy", "Hold", "Sell", "Strong Sell"]
 
@@ -76,9 +77,9 @@ class StockTipDialog(QDialog):
             self._ticker.setReadOnly(True)
 
     def _on_fetch(self) -> None:
-        ticker = self._ticker.text().strip().upper()
-        if not ticker:
-            self._fetch_status.setText("Enter a ticker first.")
+        ticker = normalize_ticker(self._ticker.text())
+        if ticker is None:
+            self._fetch_status.setText("Enter a valid ticker first.")
             return
         self._fetch_btn.setEnabled(False)
         self._fetch_status.setText("Fetching…")
@@ -109,8 +110,8 @@ class StockTipDialog(QDialog):
         self._fetch_status.setText(f"Error: {message[:60]}")
 
     def _on_accept(self) -> None:
-        ticker = self._ticker.text().strip().upper()
-        if not ticker:
+        if normalize_ticker(self._ticker.text()) is None:
+            self._fetch_status.setText("Enter a valid ticker (letters, digits, '.', '-').")
             self._ticker.setFocus()
             return
         self.accept()

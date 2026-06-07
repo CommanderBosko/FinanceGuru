@@ -29,6 +29,9 @@ def update(bill: Bill) -> None:
 
 def delete(bill_id: int) -> None:
     with get_connection() as conn:
+        # New DBs declare the FK with ON DELETE CASCADE, but databases created
+        # before that change keep the old constraint, so delete children
+        # explicitly to stay correct across both.
         conn.execute("DELETE FROM payments WHERE bill_id=?", (bill_id,))
         conn.execute("DELETE FROM bills WHERE id=?", (bill_id,))
 

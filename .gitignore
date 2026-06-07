@@ -7,3 +7,9 @@ build/
 *.egg-info/
 result
 result-*
+
+# Never commit the financial database (lives in ~/.local/share by default,
+# but guard against accidental copies into the tree)
+*.db
+*.sqlite
+*.sqlite3
