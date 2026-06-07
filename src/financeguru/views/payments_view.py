@@ -1,6 +1,8 @@
+from datetime import date
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
+    QCheckBox, QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -17,10 +19,16 @@ class PaymentsView(QWidget):
 
         btn_bar = QHBoxLayout()
         self._btn_add = QPushButton("Add Payment")
+        self._btn_edit = QPushButton("Edit")
         self._btn_delete = QPushButton("Delete")
-        self._btn_delete.setEnabled(False)
+        for btn in (self._btn_edit, self._btn_delete):
+            btn.setEnabled(False)
+        self._chk_current_only = QCheckBox("This month only")
+        self._chk_current_only.setChecked(True)
         btn_bar.addWidget(self._btn_add)
+        btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
+        btn_bar.addWidget(self._chk_current_only)
         btn_bar.addStretch()
         layout.addLayout(btn_bar)
 
@@ -34,13 +42,20 @@ class PaymentsView(QWidget):
         layout.addWidget(self._table)
 
         self._btn_add.clicked.connect(self._on_add)
+        self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
+        self._chk_current_only.toggled.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
+        self._table.doubleClicked.connect(self._on_edit)
 
         self._refresh()
 
     def _refresh(self) -> None:
-        self._rows = payment_repo.get_all()
+        rows = payment_repo.get_all()
+        if self._chk_current_only.isChecked():
+            prefix = date.today().strftime("%Y-%m-")
+            rows = [r for r in rows if (r["paid_date"] or "").startswith(prefix)]
+        self._rows = rows
         self._table.setRowCount(len(self._rows))
         for row, rec in enumerate(self._rows):
             amount_item = QTableWidgetItem(f"${rec['amount']:,.2f}")
@@ -53,12 +68,23 @@ class PaymentsView(QWidget):
             self._table.setItem(row, 3, QTableWidgetItem(rec["notes"] or ""))
 
     def _on_selection_changed(self) -> None:
-        self._btn_delete.setEnabled(bool(self._table.selectedItems()))
+        enabled = bool(self._table.selectedItems())
+        for btn in (self._btn_edit, self._btn_delete):
+            btn.setEnabled(enabled)
 
     def _on_add(self) -> None:
         dialog = PaymentDialog(self)
         if dialog.exec():
             payment_repo.add(dialog.payment())
+            self._refresh()
+
+    def _on_edit(self) -> None:
+        row = self._table.currentRow()
+        if row < 0 or not self._table.selectedItems():
+            return
+        dialog = PaymentDialog(self, self._rows[row])
+        if dialog.exec():
+            payment_repo.update(dialog.payment())
             self._refresh()
 
     def _on_delete(self) -> None:

@@ -10,7 +10,7 @@ Active development — seven tabs fully implemented (Dashboard, Bills, Payments,
 
 - **Dashboard** — Bills due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Auto-refreshes on tab focus.
 - **Bills** — Full CRUD for recurring bills (name, amount, due day, frequency). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
-- **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add and Delete supported.
+- **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A "This month only" checkbox (on by default) filters the list to the current calendar month; uncheck to see the full history.
 - **Stocks** — Portfolio holdings with ticker, shares, purchase price, date, total cost basis, and live market price / market value / gain-loss fetched via yfinance. Green/red gain-loss colouring. Refresh Prices button triggers a background QThread fetch.
 - **Stock Tips** — Track personal tips (ticker, action, target price, confidence, notes). Refresh Analyst Data fetches yfinance analyst consensus and mean price target, caching them in the DB without overwriting user-entered values.
 - **Debt Snowball** — Track debts (balance, APR, minimum payment). A pure-Python month-by-month simulator computes both Snowball and Avalanche payoff strategies with rolling extra payments. Side-by-side summary shows total interest paid and time saved per strategy. A per-debt monthly payment schedule table shows exactly how each month's payment is allocated. One-time lump-sum extra payments (windfalls, bonuses, tax refunds) can be injected at a specific month and cascade across debts.
@@ -96,7 +96,7 @@ src/financeguru/
     ├── bill_dialog.py            # Add/Edit bill form
     ├── bills_view.py             # Bills tab — table + Add/Edit/Delete/Mark Paid
     ├── payment_dialog.py         # Log payment form
-    ├── payments_view.py          # Payments tab — history + Add/Delete
+    ├── payments_view.py          # Payments tab — history + Add/Edit/Delete + month filter
     ├── stock_dialog.py           # Add/Edit stock holding form
     ├── stocks_view.py            # Stocks tab — holdings table + live prices
     ├── stock_tip_dialog.py       # Add/Edit stock tip form
@@ -113,6 +113,11 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-06-07 — Payments Edit Button and Current-Month Filter**
+
+- Added an **Edit** button and double-click-to-edit to the Payments tab, mirroring the Bills tab pattern. `PaymentDialog` now accepts an existing payment to pre-fill all fields; `payment_repo.update()` persists the changes.
+- Added a **"This month only"** checkbox (checked by default) that filters the Payments list to the current calendar month. Uncheck to see the full payment history.
 
 **2026-06-07 — Currency Precision (Decimal) and Security Hardening**
 

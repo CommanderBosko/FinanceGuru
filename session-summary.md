@@ -2,6 +2,48 @@
 
 ---
 
+## Session: 2026-06-07 — Payments Edit Button and Current-Month Filter
+
+**Duration Estimate**: Short follow-on session (same calendar day as previous session)
+**Session Focus**: Round out the Payments tab to match the Bills tab's UX — add in-place editing of existing payment records and a quick toggle to filter the list down to the current month.
+
+### What Was Accomplished
+
+- Added `payment_repo.update()` — executes an `UPDATE payments SET ... WHERE id=?` using all mutable fields (`bill_id`, `amount`, `paid_date`, `notes`).
+- Extended `PaymentDialog` to support editing an existing payment: accepts an optional `payment: dict` argument, switches the window title to "Edit Payment", stores the incoming `id` on `self._payment_id`, and pre-fills the bill combo, amount spinbox, date picker, and notes field via a new `_prefill()` method. The returned `Payment` dataclass now carries the original `id` so `payment_repo.update()` can target the correct row.
+- Added an **Edit** button to the Payments toolbar (between Add and Delete), enabled/disabled in sync with the Delete button via `_on_selection_changed`. Clicking Edit opens a pre-filled `PaymentDialog`; accepting calls `payment_repo.update()` and refreshes the table.
+- Wired **double-click-to-edit**: `QTableWidget.doubleClicked` connects to the same `_on_edit` handler so power users can bypass the button.
+- Added a **"This month only"** `QCheckBox` to the right of the Delete button, checked by default. When checked, `_refresh()` filters `payment_repo.get_all()` to rows whose `paid_date` starts with the current `YYYY-MM-` prefix. Unchecking shows the full history. The checkbox state is wired via `toggled` → `_refresh`.
+
+### Files Changed
+
+- `src/financeguru/repositories/payments.py` — Added `update(payment: Payment) -> None`
+- `src/financeguru/views/payment_dialog.py` — Optional `payment: dict` constructor arg; `_payment_id` field; `_prefill()` method; `id` included in returned `Payment`
+- `src/financeguru/views/payments_view.py` — Added `Edit` button, `"This month only"` checkbox, `_on_edit()` handler, double-click-to-edit signal, updated `_on_selection_changed` to gate both buttons, client-side month filter in `_refresh()`
+
+### Commits This Session
+
+- _(staged, not yet committed — will be captured in the session-close commit)_
+
+### Decisions Made
+
+- **Client-side month filter** — The filter is applied in Python after `get_all()` rather than as a SQL `WHERE` clause, keeping the repository interface simple. The full dataset is small enough that this is never a bottleneck.
+- **`payment: dict` rather than `Payment` dataclass** — `PaymentDialog` already received `sqlite3.Row` / dict-like objects from `_rows`; passing that directly avoids an extra conversion step and keeps the pre-fill code consistent with how the Bills dialog was already structured.
+- **Edit button mirrors Bills tab pattern exactly** — Add, Edit, Delete left-aligned; stretch spacer after; enabled/disabled by selection. Consistency across tabs reduces cognitive overhead.
+
+### Issues Encountered
+
+- None. Changes are straightforward additions with no schema changes required.
+
+### Remaining / Next Session
+
+- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages` (top priority).
+- Write pytest tests for the repository layer (`bills`, `payments`, `stocks`, `debts`, `incomes`, `stock_tips`) using an in-memory SQLite database.
+- Add user-visible error feedback when yfinance price or analyst data fetch fails (network error, rate limit).
+- Consider a reporting/charts tab using the salary, debt, and bill data now available.
+
+---
+
 ## Session: 2026-06-07 — Currency Precision (Decimal) and Security Hardening
 
 **Duration Estimate**: ~30 minutes (09:42 – 10:11 based on commit timestamps)

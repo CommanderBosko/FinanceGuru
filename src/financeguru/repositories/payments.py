@@ -29,6 +29,14 @@ def add(payment: Payment) -> int | None:
         return cur.lastrowid
 
 
+def update(payment: Payment) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE payments SET bill_id=?, amount=?, paid_date=?, notes=? WHERE id=?",
+            (payment.bill_id, payment.amount, payment.paid_date, payment.notes, payment.id),
+        )
+
+
 def delete(payment_id: int) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM payments WHERE id=?", (payment_id,))

@@ -4,11 +4,11 @@ _Last updated: 2026-06-07_
 
 ## Current Project State
 
-The app has seven fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, and Salary — all backed by SQLite and packaged as a Nix flake. Today's session completed two focused passes: a security hardening audit and a currency precision overhaul.
+The app has seven fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, and Salary — all backed by SQLite and packaged as a Nix flake. A follow-on session today completed the Payments tab UX: in-place editing of payment records and a current-month filter toggle now match the Bills tab's interaction patterns.
 
 **What works:**
 - Full Bills CRUD with Mark Paid (creates a linked Payment record; cascade-delete on bill removal)
-- Payment history log with Add and Delete
+- Payment history log with Add, Edit (button and double-click), and Delete; "This month only" checkbox filters to the current YYYY-MM- prefix by default; unchecking shows full history
 - Stock portfolio table with Add/Edit/Delete and live price refresh via yfinance QThread (with 15s per-ticker timeout and button re-enable on completion)
 - Dashboard showing monthly bill status (Paid / Overdue / Upcoming) with cost summary, auto-refreshing on tab focus
 - Stock Tips tab: track personal tips with analyst consensus and mean price targets fetched from yfinance; cached in `stock_tips` table
@@ -44,6 +44,9 @@ The app has seven fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Recent Decisions
 
+- **Client-side month filter in Payments** — `_refresh()` filters `get_all()` results in Python rather than adding a SQL `WHERE` clause; keeps the repository interface simple and the dataset is small enough that this is never a bottleneck.
+- **`payment: dict` arg to `PaymentDialog`** — Pre-fill accepts the raw `sqlite3.Row`/dict from `_rows` directly, avoiding an extra conversion step and matching how the Bills dialog was structured.
+- **Edit mirrors Bills tab button layout exactly** — Add, Edit, Delete left-aligned; stretch after; enabled/disabled by selection. Consistent UX across tabs.
 - **`Decimal` stored as `REAL`** — Avoids a schema migration; cent-quantized values round-trip through SQLite `REAL` exactly within the 53-bit mantissa. The `sqlite3` adapter (registered in `money.py`) handles binding transparently.
 - **Coerce at the read boundary** — Repositories convert `sqlite3.Row` values to `Decimal` once on load; all internal logic operates on exact types without defensive casting everywhere.
 - **Backward-compatible FK cascade** — New databases get `ON DELETE CASCADE` on `payments.bill_id`; the explicit child-delete in `bills.delete()` is kept so databases created before this change still clean up correctly.
