@@ -1,5 +1,7 @@
+import csv
 import os
 import re
+import shutil
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
@@ -125,3 +127,67 @@ def init_db() -> None:
 
         # Migrations for databases created before a column existed.
         _ensure_column(conn, "incomes", "pay_days", "pay_days TEXT")
+
+
+def backup_database(dest: Path) -> None:
+    """Write a consistent copy of the database to ``dest``.
+
+    Uses SQLite's online backup API so the copy is transactionally consistent
+    even if a WAL sidecar holds uncommitted-to-main pages.
+    """
+    dest = Path(dest)
+    with get_connection() as src, sqlite3.connect(dest) as dst:
+        src.backup(dst)
+    try:
+        os.chmod(dest, 0o600)
+    except OSError:
+        pass
+
+
+def restore_database(src: Path) -> None:
+    """Replace the live database with the backup at ``src``.
+
+    Validates that ``src`` is a readable SQLite database before overwriting, and
+    clears any stale -wal/-shm/-journal sidecars that would otherwise be applied
+    on top of the freshly restored file and corrupt it.
+    """
+    src = Path(src)
+    # Probe: opening + reading the schema fails loudly on a non-SQLite file.
+    with sqlite3.connect(src) as probe:
+        probe.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    shutil.copyfile(src, DB_PATH)
+    for suffix in ("-wal", "-shm", "-journal"):
+        sidecar = DB_PATH.with_name(DB_PATH.name + suffix)
+        sidecar.unlink(missing_ok=True)
+    try:
+        os.chmod(DB_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def export_all_csv(dest_dir: Path) -> list[Path]:
+    """Export every user table to ``dest_dir`` as one CSV file per table.
+
+    Returns the list of files written.
+    """
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    with get_connection() as conn:
+        tables = [
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
+                "ORDER BY name"
+            )
+        ]
+        for table in tables:
+            cur = conn.execute(f"SELECT * FROM {table}")
+            path = dest_dir / f"{table}.csv"
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow([col[0] for col in cur.description])
+                writer.writerows(cur.fetchall())
+            written.append(path)
+    return written
