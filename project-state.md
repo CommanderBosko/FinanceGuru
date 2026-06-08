@@ -1,12 +1,13 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-06-07 (Evening session)_
+_Last updated: 2026-06-07 (Night session)_
 
 ## Current Project State
 
-The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, and Goals — all backed by SQLite and packaged as a Nix flake. The most recent session added the Goals tab: users enter a savings goal (name, price, target month) and the app computes the monthly savings contribution, auto-creates a linked recurring bill, and tracks Amount Left as payments accumulate.
+The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, and Goals — all backed by SQLite and packaged as a Nix flake. The most recent session added a File menu giving users WAL-safe backup, restore, and full CSV export directly from the UI. Prior session added the Goals tab: users enter a savings goal (name, price, target month) and the app computes the monthly savings contribution, auto-creates a linked recurring bill, and tracks Amount Left as payments accumulate.
 
 **What works:**
+- **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600`, date-stamped default filename), Restore Database (probe-validates source is real SQLite, clears stale WAL/SHM sidecars, refreshes all tabs, `chmod 600`), Export to CSV (all user tables exported to one file each in a chosen directory), Quit (Ctrl+Q)
 - Full Bills CRUD with Mark Paid (creates a linked Payment record; cascade-delete on bill removal)
 - Payment history log with Add, Edit (button and double-click), and Delete; "This month only" checkbox filters to the current YYYY-MM- prefix by default; unchecking shows full history; live search bar filters by bill name, amount, date, or notes
 - Right-click context menus on all seven data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball, Goals) — mirrors each tab's toolbar actions via the reusable `attach_row_menu` helper in `context_menu.py`; right-clicking selects the row under the cursor first
@@ -46,6 +47,11 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Recent Decisions
 
+- **SQLite online backup API for Backup** — Transactionally consistent even when a WAL sidecar is active; a raw `shutil.copy` would miss uncommitted WAL pages and produce a potentially inconsistent file.
+- **Probe-before-overwrite in `restore_database`** — Executes `SELECT count(*) FROM sqlite_master` on the candidate file before touching `finance.db`. Prevents corrupting the live database if the user selects a non-SQLite file.
+- **Sidecar cleanup on restore** — Removes `-wal`/`-shm`/`-journal` files after copying the restored database; without this SQLite would replay the old WAL on top of the restored data.
+- **`_refresh_all()` uses duck-typing** — Calls `refresh()` on any tab widget that exposes it, requiring no registry and no changes when future tabs are added.
+- **Backup filename defaults to `financeguru-backup-YYYYMMDD.db`** — A sensible default that avoids overwriting; the user can override freely in the Save dialog.
 - **Goal always snaps to last day of month** — The picker exposes only month + year; the stored `target_date` is always the final calendar day of that month. Ensures the goal is fully funded at month-end regardless of month length.
 - **Linked bill tracks contributions** — Goal contributions are tracked as ordinary payments against a real "Goal" bill rather than a separate goals-payment table. Bills, Dashboard, and Income tabs automatically reflect the monthly commitment without special-casing.
 - **`ON DELETE SET NULL` on `goals.bill_id`** — If the bill is deleted directly from the Bills tab, the goal row survives with `bill_id = NULL` and Amount Left gracefully shows the uncontributed full price.
