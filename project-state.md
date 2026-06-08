@@ -1,13 +1,13 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-06-07 (Night session)_
+_Last updated: 2026-06-07 (Night #2 — security audit #2)_
 
 ## Current Project State
 
-The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, and Goals — all backed by SQLite and packaged as a Nix flake. The most recent session added a File menu giving users WAL-safe backup, restore, and full CSV export directly from the UI. Prior session added the Goals tab: users enter a savings goal (name, price, target month) and the app computes the monthly savings contribution, auto-creates a linked recurring bill, and tracks Amount Left as payments accumulate.
+The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, and Goals — all backed by SQLite and packaged as a Nix flake. Two comprehensive security audits have been conducted and all actionable findings addressed. The codebase is at roughly 3,500 lines across all features. The File menu (Backup/Restore/Export CSV) received the most recent security hardening: CSV injection protection, restore validation with pre-restore backup, identifier hardening in SQL/filenames, and file permission locking. The price-fetch path no longer leaks network details to the UI.
 
 **What works:**
-- **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600`, date-stamped default filename), Restore Database (probe-validates source is real SQLite, clears stale WAL/SHM sidecars, refreshes all tabs, `chmod 600`), Export to CSV (all user tables exported to one file each in a chosen directory), Quit (Ctrl+Q)
+- **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before data written, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables before overwriting, writes timestamped `.bak` safety copy, clears stale WAL/SHM sidecars, calls `init_db()` to migrate older schema, refreshes all tabs, `chmod 600`), Export to CSV (table identifiers validated via `_IDENT_RE`, each cell sanitized with `_csv_safe()` to block formula injection, each output file `chmod 600`), Quit (Ctrl+Q)
 - Full Bills CRUD with Mark Paid (creates a linked Payment record; cascade-delete on bill removal)
 - Payment history log with Add, Edit (button and double-click), and Delete; "This month only" checkbox filters to the current YYYY-MM- prefix by default; unchecking shows full history; live search bar filters by bill name, amount, date, or notes
 - Right-click context menus on all seven data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball, Goals) — mirrors each tab's toolbar actions via the reusable `attach_row_menu` helper in `context_menu.py`; right-clicking selects the row under the cursor first
@@ -23,9 +23,11 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - `sqlite3` adapter registered so `Decimal` binds transparently to `REAL` columns; existing databases load unchanged
 - DB file permissions locked to `0600`, data directory to `0700`
 - Ticker input validated and normalized via `normalize_ticker()` before reaching yfinance or the DB
-- yfinance price values sanity-checked (must be finite and positive) before display
+- yfinance price values and analyst price targets sanity-checked (must be finite and positive) before display; NaN/inf/non-positive analyst targets are silently coerced to `None`
+- Price and analyst fetch errors are logged to `stderr` as full tracebacks; only a generic user-facing message is emitted to the UI (no URLs, hostnames, or proxy details leaked)
 - Dependency versions pinned in `pyproject.toml` (`PySide6 >=6.7,<7`, `yfinance >=1.3,<2`)
 - `.gitignore` excludes `*.db` and `*.sqlite*`
+- Two comprehensive security audits completed (2026-06-07); all actionable findings addressed
 
 **What is in progress / stub state:**
 - `tests/` directory exists but contains no tests
@@ -47,8 +49,14 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Recent Decisions
 
+- **`_csv_safe()` uses apostrophe prefix** — OWASP-recommended approach; the apostrophe is stripped by spreadsheet apps before display so the user sees the original value while formula execution is blocked. Applied to every exported cell regardless of table.
+- **Core-table validation in `restore_database`** — Checking for `_CORE_TABLES` (not merely that the file opens as SQLite) prevents any SQLite file from wiping the live database. Error message names missing tables to aid legitimate debugging.
+- **Timestamped `.bak` before restore** — Keeps the current database recoverable immediately before overwrite; timestamp in the filename makes successive restores non-colliding.
+- **`init_db()` after restore** — Migrates older-schema backups in place so the running code's expectations are always met. Idempotent — existing columns are unaffected.
+- **Generic fetch-error message in `prices.py`** — Raw exceptions can contain URLs and hostnames; logging to stderr preserves debuggability without leaking environment details to the GUI.
+- **`math.isfinite` + sign guard on analyst price target** — `yfinance` can return NaN when analyst coverage is sparse; filtering at parse boundary keeps `None` as the canonical sentinel and prevents `"nan"` in the UI.
 - **SQLite online backup API for Backup** — Transactionally consistent even when a WAL sidecar is active; a raw `shutil.copy` would miss uncommitted WAL pages and produce a potentially inconsistent file.
-- **Probe-before-overwrite in `restore_database`** — Executes `SELECT count(*) FROM sqlite_master` on the candidate file before touching `finance.db`. Prevents corrupting the live database if the user selects a non-SQLite file.
+- **Probe-before-overwrite replaced by core-table check** — The previous probe (`SELECT count(*) FROM sqlite_master`) confirmed the file was SQLite but allowed any SQLite file. The new check confirms the file is specifically a FinanceGuru database.
 - **Sidecar cleanup on restore** — Removes `-wal`/`-shm`/`-journal` files after copying the restored database; without this SQLite would replay the old WAL on top of the restored data.
 - **`_refresh_all()` uses duck-typing** — Calls `refresh()` on any tab widget that exposes it, requiring no registry and no changes when future tabs are added.
 - **Backup filename defaults to `financeguru-backup-YYYYMMDD.db`** — A sensible default that avoids overwriting; the user can override freely in the Save dialog.
@@ -79,13 +87,17 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - No tests exist yet (`tests/` is an empty stub).
 - No formal schema migration strategy — new columns are added with try/except `ALTER TABLE`; dropping or renaming columns still requires manual intervention.
 - Multi-user support is not implemented; both users share the same SQLite file at `~/.local/share/financeguru/finance.db`.
-- Stock price and analyst data fetching depends on yfinance / Yahoo Finance availability; no user-visible error handling for rate-limiting or network failure.
+- Stock price and analyst data fetching depends on yfinance / Yahoo Finance availability. A generic user-facing error is shown on failure (fetch details go to stderr), but structured retry or rate-limit handling is not implemented.
+- **Residual security tech debt (intentionally deferred):**
+  - Daemon threads in `prices.py` can leak if the QThread is torn down while a blocking yfinance call is in flight. Fix requires injecting a `requests.Session` with native socket timeouts into yfinance.
+  - `pyproject.toml` version ranges are fine under Nix (locked by `flake.lock`) but permissive enough to allow a breaking minor update for `pip install` users.
+  - `yfinance` is an unofficial Yahoo Finance scraper — no SLA, no audit trail, can break on Yahoo API changes. Largest residual supply-chain exposure.
 - The Debt Snowball simulator assumes all debts start at the current balance with no partial-month handling.
 - The app has not yet been wired into the NixOS system flake (`~/NixOS/flake.nix`).
 
 ## Next Steps
 
-1. Add `financeguru` as a NixOS flake input in `~/NixOS/flake.nix` and install to a host.
+1. Add `financeguru` as a NixOS flake input in `~/NixOS/flake.nix` and install to a host (top priority).
 2. Add repository-layer pytest tests using an in-memory SQLite database; include `models/goal.py` unit tests for `months_remaining` and `monthly_savings`.
-3. Add user-visible error feedback when yfinance fetch fails (network error, rate limit).
+3. (Residual security) Fix leaked daemon threads in `prices.py` by injecting a `requests.Session` with native socket timeouts into yfinance calls.
 4. Consider a reporting/charts tab: spending over time, net worth trend using salary + debt + bill + goals data.

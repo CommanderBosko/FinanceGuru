@@ -17,7 +17,7 @@ Active development — eight tabs fully implemented (Dashboard, Bills, Payments,
 - **Income** — Enter income sources at any frequency (weekly, biweekly, semimonthly, monthly, annual, or specific calendar days). All amounts are normalized to a monthly figure. Monthly bills are subtracted to show surplus spending money. A savings-rate slider splits the surplus into a proportional save-vs-spend bar with monthly and annual projections.
 - **Goals** — Enter a savings goal (name, total price, target month). The app computes the required monthly contribution (`price / months_remaining`, rounded up to the cent) and auto-creates a recurring "Goal" bill so the commitment appears in the Bills and Dashboard tabs. Editing a goal updates its linked bill; deleting a goal (with confirmation) deletes its linked bill. An "Amount Left" column tracks how much of the goal price remains unfunded as payments accumulate. The "Afford By" date always snaps to the last day of the chosen month.
 - **Right-click context menus** — All seven data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball, Goals) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
-- **File menu** — Backup Database (WAL-safe, date-stamped, `chmod 600`), Restore Database (validates source is a real SQLite file before overwriting, clears stale WAL sidecars, refreshes all tabs), Export to CSV (one file per table in a chosen directory), and Quit (Ctrl+Q).
+- **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells sanitized against formula injection, each file `chmod 600`), and Quit (Ctrl+Q).
 - **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
 - **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix.
 
@@ -121,6 +121,16 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-06-07 (Night #2) — Security Audit #2: CSV Injection, Restore Safety, File Perms**
+
+Second comprehensive security audit of the ~3,500-line codebase, parallelized across three sub-agents (data layer, network/dependencies, file operations). All actionable findings addressed:
+
+- **CRITICAL** — CSV/formula injection: `_csv_safe()` prefixes cells starting with `=`, `+`, `-`, `@`, TAB, or CR with an apostrophe, neutralizing spreadsheet formula execution when exported CSVs are opened in Excel or LibreOffice Calc.
+- **MEDIUM** — Restore safety: `restore_database()` now rejects any file that lacks the FinanceGuru core tables (`bills`, `payments`, `stocks`, `incomes`, `debts`, `goals`, `stock_tips`), writes a timestamped `.pre-restore-YYYYMMDD-HHMMSS.bak` safety copy before overwriting, and calls `init_db()` post-restore so older-schema backups gain new columns.
+- **MEDIUM** — Export identifier hardening: table names from `sqlite_master` are validated with `_IDENT_RE.fullmatch()` before SQL interpolation or filename use — blocks SQL injection and path traversal from a crafted database.
+- **LOW** — Backup file permissions: `backup_database()` now `chmod 0o600`s the destination before writing; each exported CSV is also `chmod 0o600`.
+- **LOW** — Price fetch error hygiene: `PriceFetcher` and `TipFetcher` log tracebacks to `stderr` and emit a generic message to the UI — no URLs, hostnames, or proxy details leaked. Analyst price targets are validated with `math.isfinite` and a sign guard before reaching the UI.
 
 **2026-06-07 (Night) — File Menu: Backup, Restore, and Export to CSV**
 
