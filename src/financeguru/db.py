@@ -3,10 +3,29 @@ import os
 import re
 import shutil
 import sqlite3
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# The tables every FinanceGuru database must have. Used to reject a restore from
+# an unrelated SQLite file before it overwrites the live data.
+_CORE_TABLES = {
+    "bills", "payments", "stocks", "incomes", "debts", "goals", "stock_tips",
+}
+
+# A cell whose first character is one of these is interpreted as a formula by
+# Excel / LibreOffice Calc when the CSV is opened. Prefixing with a literal
+# apostrophe neutralises the formula while preserving the displayed value.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """Defuse spreadsheet formula injection in an exported cell value."""
+    if isinstance(value, str) and value and value[0] in _CSV_FORMULA_PREFIXES:
+        return "'" + value
+    return value
 
 # Money is handled as Decimal in the app but stored in REAL columns; tell sqlite3
 # how to bind a Decimal parameter. Cent-quantized values round-trip exactly.
@@ -136,6 +155,13 @@ def backup_database(dest: Path) -> None:
     even if a WAL sidecar holds uncommitted-to-main pages.
     """
     dest = Path(dest)
+    # Lock the destination down *before* sqlite writes financial data into it, so
+    # the backup is never momentarily world-readable on these multi-user machines.
+    dest.touch(exist_ok=True)
+    try:
+        os.chmod(dest, 0o600)
+    except OSError:
+        pass
     with get_connection() as src, sqlite3.connect(dest) as dst:
         src.backup(dst)
     try:
@@ -147,14 +173,40 @@ def backup_database(dest: Path) -> None:
 def restore_database(src: Path) -> None:
     """Replace the live database with the backup at ``src``.
 
-    Validates that ``src`` is a readable SQLite database before overwriting, and
-    clears any stale -wal/-shm/-journal sidecars that would otherwise be applied
-    on top of the freshly restored file and corrupt it.
+    Validates that ``src`` is a genuine FinanceGuru database before overwriting,
+    keeps a timestamped safety copy of the current data so the operation is
+    recoverable, clears stale -wal/-shm/-journal sidecars that would otherwise
+    corrupt the restored file, and re-runs migrations so a backup from an older
+    app version gains any columns added since.
     """
     src = Path(src)
-    # Probe: opening + reading the schema fails loudly on a non-SQLite file.
+    # Probe: confirm it's a SQLite file AND that it carries our schema, so an
+    # unrelated DB is rejected with a clear error instead of silently wiping data.
     with sqlite3.connect(src) as probe:
-        probe.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        names = {
+            row[0]
+            for row in probe.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    missing = _CORE_TABLES - names
+    if missing:
+        raise ValueError(
+            "This file is not a FinanceGuru backup "
+            f"(missing tables: {', '.join(sorted(missing))})."
+        )
+
+    # Safety copy of the current DB before we overwrite it.
+    if DB_PATH.exists():
+        safety = DB_PATH.with_name(
+            f"{DB_PATH.stem}.pre-restore-{datetime.now():%Y%m%d-%H%M%S}.bak"
+        )
+        shutil.copyfile(DB_PATH, safety)
+        try:
+            os.chmod(safety, 0o600)
+        except OSError:
+            pass
+
     shutil.copyfile(src, DB_PATH)
     for suffix in ("-wal", "-shm", "-journal"):
         sidecar = DB_PATH.with_name(DB_PATH.name + suffix)
@@ -163,6 +215,8 @@ def restore_database(src: Path) -> None:
         os.chmod(DB_PATH, 0o600)
     except OSError:
         pass
+    # Apply any migrations the restored (possibly older) schema is missing.
+    init_db()
 
 
 def export_all_csv(dest_dir: Path) -> list[Path]:
@@ -183,11 +237,25 @@ def export_all_csv(dest_dir: Path) -> list[Path]:
             )
         ]
         for table in tables:
-            cur = conn.execute(f"SELECT * FROM {table}")
+            # The table name is interpolated into SQL and the filename; only
+            # plain identifiers are safe. Names from sqlite_master are normally
+            # fine, but a restored/crafted DB could carry one with quotes, "/",
+            # or ".." — skip those rather than build an injectable query or write
+            # outside the chosen folder.
+            if not _IDENT_RE.fullmatch(table):
+                continue
+            cur = conn.execute(f'SELECT * FROM "{table}"')
             path = dest_dir / f"{table}.csv"
             with open(path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow([col[0] for col in cur.description])
-                writer.writerows(cur.fetchall())
+                writer.writerows(
+                    [_csv_safe(value) for value in row] for row in cur.fetchall()
+                )
+            # The CSV holds the same plaintext financial data as the DB.
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
             written.append(path)
     return written

@@ -1,7 +1,13 @@
 import math
+import sys
 import threading
+import traceback
 
 from PySide6.QtCore import QThread, Signal
+
+# Shown to the user on any fetch failure. The raw exception (which can include
+# URLs, hostnames, and proxy details) is logged to stderr instead of the UI.
+_FETCH_ERROR_MSG = "Could not fetch market data. Check your connection and try again."
 
 # Hard cap on a single ticker fetch. yfinance/requests can hang on a slow or
 # unresponsive Yahoo endpoint with no timeout of its own; without this bound a
@@ -47,8 +53,9 @@ class PriceFetcher(QThread):
                     lambda t=ticker: self._fetch_price(yf, t), _FETCH_TIMEOUT_S
                 )
             self.prices_ready.emit(prices)
-        except Exception as exc:
-            self.fetch_error.emit(str(exc))
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            self.fetch_error.emit(_FETCH_ERROR_MSG)
 
     @staticmethod
     def _fetch_price(yf, ticker: str) -> float | None:
@@ -81,8 +88,9 @@ class TipFetcher(QThread):
                 )
                 result[ticker] = data or {"action": None, "target": None, "count": None}
             self.tips_ready.emit(result)
-        except Exception as exc:
-            self.fetch_error.emit(str(exc))
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            self.fetch_error.emit(_FETCH_ERROR_MSG)
 
     @staticmethod
     def _fetch_one(t) -> dict:
@@ -92,7 +100,9 @@ class TipFetcher(QThread):
         try:
             pts = t.analyst_price_targets
             if pts and pts.get("mean"):
-                target = float(pts["mean"])
+                mean = float(pts["mean"])
+                # Reject NaN/inf/non-positive so they don't reach the UI as "nan".
+                target = mean if math.isfinite(mean) and mean > 0 else None
         except Exception:
             pass
         try:
