@@ -1,6 +1,6 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-06-07 (Night #2 — security audit #2)_
+_Last updated: 2026-06-14 — first test suite (repositories + Goal model)_
 
 ## Current Project State
 
@@ -28,9 +28,10 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - Dependency versions pinned in `pyproject.toml` (`PySide6 >=6.7,<7`, `yfinance >=1.3,<2`)
 - `.gitignore` excludes `*.db` and `*.sqlite*`
 - Two comprehensive security audits completed (2026-06-07); all actionable findings addressed
+- Repository-layer pytest suite (36 tests) covering all seven repositories plus the `Goal` model, run against a per-test temp-file SQLite database created via the real `init_db()` (`tests/conftest.py` fixture); verifies CRUD round-trips, `Decimal`↔`REAL` exactness, FK `ON DELETE CASCADE`/`SET NULL`, payment aggregation/month filtering, NULL preservation, and `months_remaining`/`monthly_savings` math
 
 **What is in progress / stub state:**
-- `tests/` directory exists but contains no tests
+- (none)
 
 **What is broken:**
 - Nothing known
@@ -39,8 +40,8 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ### Short-term (next 1-3 sessions)
 1. Wire the package into the NixOS flake at `~/NixOS/flake.nix` — add `financeguru.url` as an input and add the package to a host's `environment.systemPackages` (top priority).
-2. Write initial tests for the repository layer (`bills.py`, `payments.py`, `stocks.py`, `debts.py`, `incomes.py`, `stock_tips.py`, `goals.py`) using an in-memory SQLite database; include `months_remaining` and `monthly_savings` unit tests for the `Goal` model.
-3. Add user-visible error feedback when yfinance price or analyst data fetch fails.
+2. Add user-visible error feedback when yfinance price or analyst data fetch fails.
+3. Extend test coverage beyond the repository layer: `db.py` backup/restore/export-CSV and `_csv_safe`, the `snowball.py` simulator, and `budget.py` frequency normalization.
 
 ### Long-term
 - Multi-user data partitioning (bosko vs. natty views/profiles)
@@ -49,6 +50,8 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Recent Decisions
 
+- **Tests use a per-test temp-file DB, not `:memory:`** — Each repository call opens a fresh `get_connection()`, and a `:memory:` SQLite database is private to a single connection, so it can't be shared across calls within one test. The autouse `temp_db` fixture in `tests/conftest.py` monkeypatches `db.DB_DIR`/`db.DB_PATH` to a `tmp_path` file and runs the real `init_db()`, exercising the actual schema, FK cascades, and the Decimal↔REAL round-trip.
+- **Test helpers use typed keyword args, not `dict(**overrides)`** — A `dict(...).update(overrides)` builder widens every value to the union of all field types, which Pyright then rejects at the dataclass constructor. Plain typed-parameter factory functions keep the editor clean with no runtime change.
 - **`_csv_safe()` uses apostrophe prefix** — OWASP-recommended approach; the apostrophe is stripped by spreadsheet apps before display so the user sees the original value while formula execution is blocked. Applied to every exported cell regardless of table.
 - **Core-table validation in `restore_database`** — Checking for `_CORE_TABLES` (not merely that the file opens as SQLite) prevents any SQLite file from wiping the live database. Error message names missing tables to aid legitimate debugging.
 - **Timestamped `.bak` before restore** — Keeps the current database recoverable immediately before overwrite; timestamp in the filename makes successive restores non-colliding.
@@ -84,7 +87,7 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Known Issues / Tech Debt
 
-- No tests exist yet (`tests/` is an empty stub).
+- Test coverage is repository-layer + `Goal` model only; `db.py` (backup/restore/CSV), `snowball.py`, `budget.py`, and the views remain untested.
 - No formal schema migration strategy — new columns are added with try/except `ALTER TABLE`; dropping or renaming columns still requires manual intervention.
 - Multi-user support is not implemented; both users share the same SQLite file at `~/.local/share/financeguru/finance.db`.
 - Stock price and analyst data fetching depends on yfinance / Yahoo Finance availability. A generic user-facing error is shown on failure (fetch details go to stderr), but structured retry or rate-limit handling is not implemented.
@@ -98,6 +101,6 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 ## Next Steps
 
 1. Add `financeguru` as a NixOS flake input in `~/NixOS/flake.nix` and install to a host (top priority).
-2. Add repository-layer pytest tests using an in-memory SQLite database; include `models/goal.py` unit tests for `months_remaining` and `monthly_savings`.
+2. Extend tests to `db.py` (backup/restore/export-CSV, `_csv_safe`), `snowball.py`, and `budget.py`.
 3. (Residual security) Fix leaked daemon threads in `prices.py` by injecting a `requests.Session` with native socket timeouts into yfinance calls.
 4. Consider a reporting/charts tab: spending over time, net worth trend using salary + debt + bill + goals data.
