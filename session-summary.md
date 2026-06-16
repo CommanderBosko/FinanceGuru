@@ -4,6 +4,35 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-06-16 — Expense Tracking Layer + Spending Charts Tab
+
+**Focus**: Ship the top roadmap item — a reporting/charts tab — starting with spending-over-time.
+
+### What changed (and why)
+- Scoped the work end-to-end first (`/interview` → brief at `docs/charts-tab-brief.md`, second-AI reviewed). The interview turned "a charts tab" into two pieces: an arbitrary-expense layer + the charts that read it.
+- **Data layer**: new `categories.py` (fixed category list + `GOAL_NOTE`/`SAVINGS_CATEGORY`, single source of truth), `category` column on `bills` (+ migration) and a new `expenses` table, `Expense` model + repo, and `reporting.py` with `monthly_spending(window=12)` / `category_breakdown(year, month)`.
+- **UI**: Expenses tab (CRUD), category combobox on the bill dialog, and a Charts tab (QtCharts — stacked by-category bars over 12 months + a per-month breakdown pie). Wired both into `main_window` (8 → 10 tabs).
+- Built the data layer + its tests myself (the spending math is the load-bearing part), then fanned the UI/test work out to 3 parallel sub-agents against fixed interface contracts.
+- Mid-session the user asked to drop the Total↔By-category toggle — the over-time chart is now always stacked by category.
+
+### Decisions
+- Spending universe = **all payments + all expenses** (goal contributions are already payments — categorize a `notes='Goal'` payment as Savings, don't add a third addend = no double-count).
+- **Savings excluded from the monthly total** but shown in the breakdown (saving isn't spending). User decision.
+- Category = plain `TEXT` column + Python constant, no categories table/management UI (v1). `expenses` added to `_CORE_TABLES` (pre-feature backups now rejected on restore — accepted).
+- `reporting.py` is standalone (cross-cuts payments+expenses+bills); sums in `Decimal`, floats only at the QtCharts boundary.
+
+### Issues / surprises
+- The reviewer caught that the "Goal" bill is **not** hidden — it's an ordinary bill tagged `notes='Goal'` — which corrected the spending-universe framing before any code was written.
+- QtCharts imports cleanly in `nix develop` — no flake change needed.
+
+### Next session
+- Net-worth trend view (the deferred charts phase).
+- GUI eyeball of the new tabs; decide whether the stacked chart should also exclude Savings.
+
+**Commits**: `714adcd` (feature) + this session-close
+
+---
+
 ## Session: 2026-06-15 (pm) — Eliminate prices.py Daemon-Thread Leak
 
 **Focus**: Close roadmap item #1 — the leaked daemon threads in `prices.py`.
@@ -158,110 +187,3 @@ Other ongoing items:
 - Consider a reporting/charts tab using the salary, debt, bill, and goals data now available.
 
 ---
-
-## Session: 2026-06-07 (Evening) — Goals Budgeting Tab
-
-**Duration Estimate**: Single focused session
-**Session Focus**: Add a Goals tab that lets users plan and track savings toward a future purchase, automatically wiring each goal to a recurring Bill so monthly contributions show up in the budget.
-
-### What Was Accomplished
-
-- Added a new **Goals** tab positioned immediately after the Debt Snowball tab (eighth tab total).
-- Each goal stores a name, price, target month, and optional notes. The "Afford By" date picker shows only month + year and snaps the stored date to the last day of that month, so every goal is fully funded by month-end.
-- Monthly savings calculation: `price / months_remaining`, rounded up to the cent via `ROUND_UP`; months floored at 1 so a goal due this month (or already past) never produces a divide-by-zero.
-- Adding a goal auto-creates a recurring monthly "Goal" bill in the Bills tab with `amount = monthly_savings`, `due_day = target_date.day`, and `notes = "Goal"`. Editing a goal updates its linked bill. Deleting a goal (with a confirm dialog) also deletes its linked bill.
-- Added an **Amount Left** column (right of Price) computed as `price − sum of payments against the goal's bill`, floored at $0. Marking the linked Goal bill as paid in the Bills tab reduces Amount Left on the next Goals tab refresh.
-- Added `payment_repo.total_paid_by_bill()` — a single grouped-sum query (`SUM(amount) GROUP BY bill_id`) returning a `dict[int, Decimal]`; used by the Goals tab to compute Amount Left without N+1 queries.
-- Added a public `BillsView.refresh()` method so `GoalsView` can trigger a Bills tab refresh after auto-creating or deleting a Goal bill.
-- `GoalDialog` shows a live "Save monthly" label that updates on every price or date change — users see the monthly commitment before committing.
-- Right-click context menu wired into the Goals table via the existing `attach_row_menu` helper (Add/Edit/Delete).
-
-### Files Changed
-
-- `src/financeguru/models/goal.py` — New: `Goal` dataclass, `months_remaining()` helper, `monthly_savings()` method (new file)
-- `src/financeguru/repositories/goals.py` — New: full CRUD (`get_all`, `add`, `update`, `delete`) (new file)
-- `src/financeguru/views/goal_dialog.py` — New: Add/Edit goal form with live monthly-savings label; date picker snaps to end of month (new file)
-- `src/financeguru/views/goals_view.py` — New: Goals tab view — table, toolbar buttons, bill sync logic, Amount Left computation (new file)
-- `src/financeguru/db.py` — Added `goals` table DDL (`id`, `name`, `price`, `target_date`, `bill_id` FK → `bills.id` ON DELETE SET NULL, `notes`)
-- `src/financeguru/views/main_window.py` — Imported `GoalsView`; registered Goals tab after Debt Snowball
-- `src/financeguru/views/bills_view.py` — Added public `refresh()` method delegating to existing `_refresh()`
-- `src/financeguru/repositories/payments.py` — Added `total_paid_by_bill() -> dict[int, Decimal]`
-
-### Commits This Session
-
-- `91b6e44` — feat(goals): add Goals budgeting tab with linked bills and Amount Left tracking
-
-### Decisions Made
-
-- **Goal always snaps to last day of month** — The picker exposes only month + year; the stored date is always the final calendar day of that month. This ensures the goal is fully funded at the end of the chosen month regardless of how many days are in it.
-- **Linked bill carries the savings amount** — Instead of a separate Goals payment log, goal contributions are tracked as ordinary payments against a real bill. This means the Bills and Dashboard tabs automatically show the monthly commitment without any special-casing.
-- **`ON DELETE SET NULL` on `goals.bill_id`** — If the linked bill is deleted directly from the Bills tab (rather than via the Goals tab), the goal row survives with `bill_id = NULL` and Amount Left falls back to zero-contributed. Prevents orphan goal rows with dangling FKs.
-- **Grouped-sum query in `total_paid_by_bill()`** — One SQL call returns all bill totals at once; `GoalsView._refresh()` does a dict lookup per goal rather than a per-goal query. Keeps the refresh O(1) in DB round-trips regardless of how many goals exist.
-- **`months_remaining` logic lives in the model** — `Goal.monthly_savings()` delegates to `months_remaining()` (also in `models/goal.py`), keeping math testable in isolation without importing any view or repository code.
-
-### Issues Encountered
-
-- None. All changes are additive; no existing schema columns were modified.
-
-### Remaining / Next Session
-
-- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages` (top priority).
-- Write pytest tests for the repository layer (`bills`, `payments`, `stocks`, `debts`, `incomes`, `stock_tips`, `goals`) using an in-memory SQLite database.
-- Add user-visible error feedback when yfinance price or analyst data fetch fails (network error, rate limit).
-- Consider a reporting/charts tab using the salary, debt, bill, and goals data now available.
-
----
-
-## Session: 2026-06-07 (PM) — Right-Click Menus, Payments Search, and UX Polish
-
-**Duration Estimate**: ~1 hour (17:16 – 17:43 based on commit timestamps)
-**Session Focus**: Round out the app's UX by adding keyboard-alternative context menus to every data table and a live search bar to the Payments tab. Also renamed the Salary tab label to "Income" and fixed the icon missing from installed NixOS packages.
-
-### What Was Accomplished
-
-- Renamed the Salary tab display label from "Salary" to "Income" in `main_window.py`; the underlying `SalaryView` module and class name are unchanged.
-- Fixed the app icon missing from installed NixOS packages: `flake.nix` `postInstall` previously only copied the `.desktop` file, so `QIcon.fromTheme("financeguru")` found no icon in the store for installed packages. The hicolor SVG is now installed to the prefix, making the icon work both in `nix develop` and on machines using the installed package.
-- Created `src/financeguru/views/context_menu.py` — a reusable `attach_row_menu(table, actions)` helper. Right-clicking selects the row under the cursor first; actions with `needs_selection=True` are disabled when nothing is selected; `None` entries in the action list render as separators.
-- Wired `attach_row_menu` into all six data tables: Bills, Payments, Income (SalaryView), Stocks, Stock Tips, and Debt Snowball. Each menu mirrors the tab's toolbar buttons and reuses the same handlers — no duplicate logic.
-- Added a live search bar to the Payments toolbar (to the right of the existing controls, right-aligned via a stretch spacer). The filter is applied client-side in `_refresh()`: case-insensitive substring match across bill name, displayed amount string, date, and notes. The `QLineEdit.textChanged` signal re-runs `_refresh` on every keystroke. A clear button (`setClearButtonEnabled(True)`) lets the user reset the filter instantly.
-
-### Files Changed
-
-- `src/financeguru/views/main_window.py` — Tab label changed from `"Salary"` to `"Income"`
-- `flake.nix` — `postInstall` extended to also install the hicolor SVG icon to the store output
-- `src/financeguru/views/context_menu.py` — New module: `ActionSpec` type alias and `attach_row_menu` helper (new file)
-- `src/financeguru/views/bills_view.py` — `attach_row_menu` wired in with Add/Edit/Delete/Mark Paid actions
-- `src/financeguru/views/payments_view.py` — `attach_row_menu` wired in; search `QLineEdit` added to toolbar; `_refresh` updated to apply search filter after the month filter
-- `src/financeguru/views/salary_view.py` — `attach_row_menu` wired in with Add/Edit/Delete actions
-- `src/financeguru/views/stocks_view.py` — `attach_row_menu` wired in with Add/Edit/Delete/Refresh actions
-- `src/financeguru/views/stock_tips_view.py` — `attach_row_menu` wired in with Add/Edit/Delete/Refresh Analyst Data actions
-- `src/financeguru/views/debt_snowball_view.py` — `attach_row_menu` wired in with Add/Edit/Delete actions
-
-### Commits This Session
-
-- `db3e9c3` — feat(ui): rename Salary tab label to "Income"
-- `7aa05cd` — fix(packaging): install app icon into store output
-- `cbebb80` — feat(ui): add right-click context menus to all data tables
-- `afe95d2` — feat(payments): add search bar filtering bills, amounts, dates, notes
-- `108db6c` — style(payments): right-align the search bar in the toolbar
-
-### Decisions Made
-
-- **Reusable helper over per-view duplication** — `attach_row_menu` takes a generic `list[ActionSpec | None]`; every view passes its own callbacks. Adding menus to six tables required zero repeated logic.
-- **Client-side search filter** — Applied in Python after `get_all()`, chained with the existing month filter. The payments dataset is small enough that this is never a bottleneck, and it avoids complicating the repository interface.
-- **Match on displayed strings, not raw values** — The search checks the `Amount` column's display text (e.g., `"$42.00"`) rather than the raw `Decimal`, so users can search by what they see in the table.
-- **`QLineEdit` right-aligned** — Stretch spacer before the search widget mirrors a standard browser/finder search bar placement and keeps the action buttons visually grouped on the left.
-
-### Issues Encountered
-
-- None. All changes are additive; no schema or model changes required.
-
-### Remaining / Next Session
-
-- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages` (top priority).
-- Write pytest tests for the repository layer (`bills`, `payments`, `stocks`, `debts`, `incomes`, `stock_tips`) using an in-memory SQLite database.
-- Add user-visible error feedback when yfinance price or analyst data fetch fails (network error, rate limit).
-- Consider a reporting/charts tab using the salary, debt, and bill data now available.
-
----
-

@@ -1,22 +1,24 @@
 # Finance Guru
 
-A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, visualizes an income budget with savings projections, and plans savings goals with automatic monthly bill creation. Database backup, restore, and CSV export are built into the File menu. Built with PySide6 and SQLite, packaged as a Nix flake.
+A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments and one-off expenses, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, visualizes an income budget with savings projections, plans savings goals with automatic monthly bill creation, and charts where the money goes month to month. Database backup, restore, and CSV export are built into the File menu. Built with PySide6 and SQLite, packaged as a Nix flake.
 
 ## Current Status
 
-Active development — eight tabs fully implemented (Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, Goals). All features are functional and persisted to SQLite. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 69-test pytest suite covers the repositories, models, and the `db`/`snowball`/`budget`/`prices` modules.
+Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 91-test pytest suite covers the repositories, models, and the `db`/`snowball`/`budget`/`prices`/`reporting` modules.
 
 ## Features
 
 - **Dashboard** — Bills due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Auto-refreshes on tab focus.
-- **Bills** — Full CRUD for recurring bills (name, amount, due day, frequency). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
+- **Bills** — Full CRUD for recurring bills (name, amount, due day, frequency, category). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
 - **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A "This month only" checkbox (on by default) filters the list to the current calendar month; uncheck to see the full history. A live search bar filters by bill name, amount, date, or notes.
+- **Expenses** — Log one-off, non-recurring expenses (amount, date, category, notes) with full Add/Edit/Delete CRUD, double-click to edit, and a right-click context menu. Every expense carries a category from a fixed list (Housing, Utilities, Food, Transport, Health, Entertainment, Savings, Other).
+- **Charts** — Visualizes spending over the trailing 12 months. A stacked bar chart breaks each month's spending into categories; a pie chart shows a single month's breakdown (defaults to the current month, with a picker for any of the last 12). Spending = all payments + all expenses; goal contributions are counted as "Savings" and excluded from the monthly spending total. Auto-refreshes on tab focus.
 - **Stocks** — Portfolio holdings with ticker, shares, purchase price, date, total cost basis, and live market price / market value / gain-loss fetched via yfinance. Green/red gain-loss colouring. Refresh Prices button triggers a background QThread fetch.
 - **Stock Tips** — Track personal tips (ticker, action, target price, confidence, notes). Refresh Analyst Data fetches yfinance analyst consensus and mean price target, caching them in the DB without overwriting user-entered values.
 - **Debt Snowball** — Track debts (balance, APR, minimum payment). A pure-Python month-by-month simulator computes both Snowball and Avalanche payoff strategies with rolling extra payments. Side-by-side summary shows total interest paid and time saved per strategy. A per-debt monthly payment schedule table shows exactly how each month's payment is allocated. One-time lump-sum extra payments (windfalls, bonuses, tax refunds) can be injected at a specific month and cascade across debts.
 - **Income** — Enter income sources at any frequency (weekly, biweekly, semimonthly, monthly, annual, or specific calendar days). All amounts are normalized to a monthly figure. Monthly bills are subtracted to show surplus spending money. A savings-rate slider splits the surplus into a proportional save-vs-spend bar with monthly and annual projections.
 - **Goals** — Enter a savings goal (name, total price, target month). The app computes the required monthly contribution (`price / months_remaining`, rounded up to the cent) and auto-creates a recurring "Goal" bill so the commitment appears in the Bills and Dashboard tabs. Editing a goal updates its linked bill; deleting a goal (with confirmation) deletes its linked bill. An "Amount Left" column tracks how much of the goal price remains unfunded as payments accumulate. The "Afford By" date always snaps to the last day of the chosen month.
-- **Right-click context menus** — All seven data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball, Goals) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
+- **Right-click context menus** — The data tables (Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
 - **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells sanitized against formula injection, each file `chmod 600`), and Quit (Ctrl+Q).
 - **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
 - **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix.
@@ -79,9 +81,12 @@ src/financeguru/
 ├── prices.py                     # PriceFetcher / TipFetcher QThreads — background yfinance lookups via a capped curl_cffi session; per-ticker failure reporting
 ├── snowball.py                   # Pure-Python Debt Snowball/Avalanche month-by-month simulator (Decimal)
 ├── budget.py                     # Shared frequency-to-monthly normalization (all pay frequencies, Decimal)
+├── reporting.py                  # Spending aggregation for Charts: monthly_spending() + category_breakdown() (Decimal)
+├── categories.py                 # Fixed canonical category list + GOAL_NOTE/SAVINGS_CATEGORY constants
 ├── models/
-│   ├── bill.py                   # Bill dataclass
+│   ├── bill.py                   # Bill dataclass (with category)
 │   ├── payment.py                # Payment dataclass
+│   ├── expense.py                # Expense dataclass (one-off spending with category)
 │   ├── stock.py                  # Stock dataclass
 │   ├── stock_tip.py              # StockTip dataclass
 │   ├── debt.py                   # Debt dataclass
@@ -90,6 +95,7 @@ src/financeguru/
 ├── repositories/
 │   ├── bills.py                  # DB access for bills
 │   ├── payments.py               # DB access for payments (includes total_paid_by_bill())
+│   ├── expenses.py               # DB access for one-off expenses
 │   ├── stocks.py                 # DB access for stocks
 │   ├── stock_tips.py             # DB access for stock tips + analyst data update
 │   ├── debts.py                  # DB access for debts
@@ -103,6 +109,9 @@ src/financeguru/
     ├── bills_view.py             # Bills tab — table + Add/Edit/Delete/Mark Paid
     ├── payment_dialog.py         # Log payment form
     ├── payments_view.py          # Payments tab — history + Add/Edit/Delete + month filter + search
+    ├── expense_dialog.py         # Add/Edit one-off expense form
+    ├── expenses_view.py          # Expenses tab — table + Add/Edit/Delete
+    ├── charts_view.py            # Charts tab — stacked monthly spending + category breakdown pie (QtCharts)
     ├── stock_dialog.py           # Add/Edit stock holding form
     ├── stocks_view.py            # Stocks tab — holdings table + live prices
     ├── stock_tip_dialog.py       # Add/Edit stock tip form
@@ -121,6 +130,13 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-06-16 — Expense Tracking Layer + Spending Charts Tab**
+
+- Added two new tabs (8 → 10): **Expenses** (one-off expense CRUD with categories) and **Charts** (a stacked by-category bar chart of spending over the trailing 12 months plus a per-month breakdown pie, built on QtCharts).
+- New data layer: `categories.py` (fixed category list, single source of truth for the `GOAL_NOTE`/`SAVINGS_CATEGORY` constants), a `category` column on `bills` (with migration) and a new `expenses` table, the `Expense` model + repository, and `reporting.py` with `monthly_spending(window=12)` and `category_breakdown(year, month)`.
+- Spending is unified across **all payments + all expenses**; a payment against a "Goal" bill is categorized as Savings and excluded from the headline monthly total (saving isn't spending), but shown in the breakdown. All aggregation is done in `Decimal`, cast to `float` only at the chart boundary.
+- Suite 69 → 91 tests, all green.
 
 **2026-06-15 (pm) — Eliminated the prices.py Daemon-Thread Leak**
 
@@ -145,19 +161,14 @@ Second comprehensive security audit of the ~3,500-line codebase, parallelized ac
 - **LOW** — Backup file permissions: `backup_database()` now `chmod 0o600`s the destination before writing; each exported CSV is also `chmod 0o600`.
 - **LOW** — Price fetch error hygiene: `PriceFetcher` and `TipFetcher` log tracebacks to `stderr` and emit a generic message to the UI — no URLs, hostnames, or proxy details leaked. Analyst price targets are validated with `math.isfinite` and a sign guard before reaching the UI.
 
-**2026-06-07 (Night) — File Menu: Backup, Restore, and Export to CSV**
-
-- Added a `&File` menu to the main window with four actions: Backup Database, Restore Database, Export to CSV, and Quit (Ctrl+Q).
-- `backup_database` uses the SQLite online backup API for a transactionally consistent copy that merges WAL pages; output is `chmod 600`.
-- `restore_database` validates the source file is real SQLite before overwriting, then clears any stale `-wal`/`-shm`/`-journal` sidecars; triggers a full tab refresh afterward.
-- `export_all_csv` enumerates all user tables from `sqlite_master` and writes one CSV per table to a chosen directory; returns the list of written paths.
-
 _Earlier session entries are recorded in [session-summary-archive.md](session-summary-archive.md) and git history._
 
 ## Roadmap
 
-- **Reporting / charts** — Spending over time, net worth trend using the salary, debt, bill, and goals data now available. (Top new-feature item.)
+- **Net-worth trend** — The deferred half of the charts work: a net-worth-over-time view from salary, debt, stock, and goals data. (Spending-over-time shipped 2026-06-16.)
+- **Charts polish** — GUI eyeball of the new tabs (legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
 - **View tests** — Add an offscreen-Qt harness so the PySide6 views can be smoke-tested (the non-UI modules are covered).
+- **Category management** — Editable categories (add/edit/delete) beyond the fixed v1 list.
 - **yfinance robustness** — Native socket timeouts are now in place (daemon-thread leak resolved). yfinance 1.3.0 also provides retry/backoff and 429 handling itself, so any *custom* retry layer is likely redundant — re-evaluate before building.
 - **Multi-user support** — App is used by two people (bosko, natty); per-user data partitioning is not yet implemented.
 - **Schema migration utility** — Lightweight helper beyond the current try/except column-add approach.

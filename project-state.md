@@ -1,10 +1,10 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-06-15 (pm) — eliminated prices.py daemon-thread leak via injected capped curl_cffi session_
+_Last updated: 2026-06-16 — added the expense-tracking layer + spending Charts tab (now 10 tabs)_
 
 ## Current Project State
 
-The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, and Goals — all backed by SQLite and packaged as a Nix flake. Two comprehensive security audits have been conducted and all actionable findings addressed. The codebase is at roughly 3,500 lines across all features. The File menu (Backup/Restore/Export CSV) received the most recent security hardening: CSV injection protection, restore validation with pre-restore backup, identifier hardening in SQL/filenames, and file permission locking. The price-fetch path no longer leaks network details to the UI.
+The app has ten fully-functional tabs — Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, and Charts — all backed by SQLite and packaged as a Nix flake. Two comprehensive security audits have been conducted and all actionable findings addressed. The File menu (Backup/Restore/Export CSV) received earlier security hardening: CSV injection protection, restore validation with pre-restore backup, identifier hardening in SQL/filenames, and file permission locking. The price-fetch path no longer leaks network details to the UI. The newest work added an arbitrary-expense tracking layer (one-off expenses with categories) plus a reporting/Charts tab that visualizes spending over the trailing 12 months.
 
 **What works:**
 - **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before data written, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables before overwriting, writes timestamped `.bak` safety copy, clears stale WAL/SHM sidecars, calls `init_db()` to migrate older schema, refreshes all tabs, `chmod 600`), Export to CSV (table identifiers validated via `_IDENT_RE`, each cell sanitized with `_csv_safe()` to block formula injection, each output file `chmod 600`), Quit (Ctrl+Q)
@@ -17,6 +17,10 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - Debt Snowball tab: track debts with balance, APR, and minimum payment; month-by-month simulator computes both Snowball and Avalanche payoff schedules in exact `Decimal` arithmetic; side-by-side comparison; per-debt monthly payment schedule table; one-time lump-sum extra payments (windfalls)
 - Income tab: enter paychecks at any frequency (weekly through annual, or specific calendar days), normalized to a monthly figure using exact `Decimal` division; subtracts monthly bills to show surplus; savings-rate slider with proportional save-vs-spend bar and monthly/annual projections
 - Goals tab: add/edit/delete savings goals (name, price, Afford By month); monthly savings computed as `ceil(price / months_remaining)` with months floored at 1; each goal auto-creates and syncs a recurring "Goal" bill; Amount Left column = `price − sum(payments against the goal's bill)`, floored at $0; deleting a goal also deletes its linked bill (with confirm)
+- Expenses tab: add/edit/delete one-off arbitrary expenses (amount, date, category, notes) with toolbar + double-click + right-click context menu; mirrors the Bills tab CRUD pattern; exposes a public `refresh()` so it updates on tab focus / after restore
+- Charts tab (reporting): two QtCharts views on one screen — a stacked-by-category bar chart of spending over the trailing 12 months, and a per-month breakdown pie defaulting to the current month with a picker for any of the last 12. Reads unified spending (all payments + all expenses) via `reporting.py`. Auto-refreshes on tab focus
+- Categories: a fixed canonical list (Housing, Utilities, Food, Transport, Health, Entertainment, Savings, Other) in `categories.py`; every bill and expense carries a `category` (defaults to "Other"). No category-management UI (v1)
+- Spending model: a payment against a `notes='Goal'` bill is force-categorized "Savings"; Savings is shown in the breakdown/stacked views but **excluded** from the monthly spending total (saving isn't spending). All aggregation is done in `Decimal`, cast to `float` only at the QtCharts boundary
 - App icon in system app menu, window title bar, and taskbar — correctly installed into the Nix store prefix
 - Nix `buildPythonApplication` packaging with desktop entry and icon installed to prefix
 - All monetary values represented as `Decimal` throughout models, repositories, views, and simulation — no IEEE-754 float error
@@ -28,7 +32,10 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - Dependency versions pinned in `pyproject.toml` (`PySide6 >=6.7,<7`, `yfinance >=1.3,<2`)
 - `.gitignore` excludes `*.db` and `*.sqlite*`
 - Two comprehensive security audits completed (2026-06-07); all actionable findings addressed
-- Pytest suite (69 tests) run against a per-test temp-file SQLite database created via the real `init_db()` (`tests/conftest.py` fixture):
+- Pytest suite (91 tests) run against a per-test temp-file SQLite database created via the real `init_db()` (`tests/conftest.py` fixture):
+  - **`reporting.py`** (`test_reporting.py`) — payment inherits its bill's category, Goal-tagged payment → Savings, no-bill payment → Other, expense uses its own category, breakdown sums payments+expenses, month-boundary filtering, empty month → `{}`, float-at-boundary; `monthly_spending` window size + oldest-first ordering, Savings-excluded-from-total, sparse-history zero-fill
+  - **`expenses.py`** (`test_expenses.py`) — CRUD round-trip, `Decimal`↔`REAL` exactness, default category "Other", `spent_date DESC` ordering
+  - `bills`/`db` tests extended for the new `category` column (round-trip, default, `init_db()` creates it, `_ensure_column` legacy-DB migration) and the `expenses` core table (CSV export)
   - **Repositories + `Goal` model** — CRUD round-trips, `Decimal`↔`REAL` exactness, FK `ON DELETE CASCADE`/`SET NULL`, payment aggregation/month filtering, NULL preservation, `months_remaining`/`monthly_savings` math
   - **`db.py`** (`test_db.py`) — backup round-trip + `chmod 600`, restore reverts live data / writes the `.pre-restore-*.bak` safety copy / rejects a non-FinanceGuru SQLite file, `export_all_csv` (one file per table + headers + perms), `_csv_safe` formula-injection neutralization, `_ensure_column` idempotency + identifier rejection
   - **`snowball.py`** (`test_snowball.py`) — two-plan return, zero-interest payoff, snowball-by-balance vs avalanche-by-rate ordering, extra/lump-sum acceleration, interest accrual, empty input, `payoff_date` format
@@ -46,18 +53,29 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 ## Current Goals
 
 ### Short-term (next 1-3 sessions)
-1. Consider a reporting/charts tab (spending over time, net worth trend) using salary + debt + bill + goals data. **(Now the top new-feature item.)**
-2. (Optional) Add an offscreen-Qt test harness so the PySide6 views can be smoke-tested.
-3. Re-evaluate whether any *custom* retry / rate-limit handling is still worth adding — yfinance 1.3.0 already provides retry/backoff (`YfConfig.network.retries`) and `YFRateLimitError` on HTTP 429, so the original goal is largely redundant.
+1. **Net-worth trend** — the deferred half of the charts roadmap. Build a net-worth-over-time view from salary/debt/stock/goals data (the original "is my net worth going up?" question). Was explicitly out of scope for the Charts v1.
+2. **Charts polish** — only validated headless so far; do a real GUI eyeball (legend readability, stacked-bar colours, pie label crowding with many categories). Consider whether the stacked over-time chart should also exclude Savings (currently the stacked/pie views include it, only the headline *total* excludes it).
+3. (Optional) Add an offscreen-Qt test harness so the PySide6 views can be smoke-tested (Charts/Expenses still rely on manual visual verification).
+4. Re-evaluate whether any *custom* retry / rate-limit handling is still worth adding — yfinance 1.3.0 already provides retry/backoff (`YfConfig.network.retries`) and `YFRateLimitError` on HTTP 429, so the original goal is largely redundant.
 
-_Done this session: leaked daemon threads in `prices.py` eliminated (injected capped curl_cffi session, `_call_with_timeout` removed)._
+_Done this session: expense-tracking layer + spending Charts tab (10 tabs total); 91 tests; brief saved at `docs/charts-tab-brief.md`._
 
 ### Long-term
+- Net-worth trend view (deferred charts phase — see short-term #1)
 - Multi-user data partitioning (bosko vs. natty views/profiles)
 - Lightweight schema migration utility for adding/renaming/dropping columns
-- Evaluate reporting/charts view (spending over time, net worth trend)
+- Category-management UI (add/edit/delete categories) — fixed list only in v1
 
 ## Recent Decisions
+
+- **Spending universe = all payments + all expenses (not "+ goal contributions")** — goal contributions are already payments against an ordinary bill tagged `notes='Goal'` (not a hidden row), so adding them as a third addend would double-count. `reporting.py` categorizes a Goal-tagged payment as "Savings" via a single rule.
+- **Savings excluded from the monthly total, included in the breakdown** — saving money isn't spending it, so a fat goal-contribution month shouldn't read as a big spending month. `monthly_spending` returns `total` (Savings out) and `by_category` (Savings in) from the same query; the views never recompute. (User decision during /interview.)
+- **Charts over-time chart is always stacked-by-category** — the original Total↔By-category toggle was removed at the user's request mid-session; by-category is the more useful view for spotting unnecessary spending, so it's the only mode.
+- **Category as a plain `TEXT` column, not a categories table** — fixed list + no management UI means a `category TEXT NOT NULL DEFAULT 'Other'` column on `bills`/`expenses` and a Python constant (`categories.py`) is sufficient; no FK, no lookup table. `GOAL_NOTE`/`SAVINGS_CATEGORY` live there too as the single source of truth (`goals_view` imports `GOAL_NOTE` from it).
+- **`reporting.py` is a standalone aggregation module** — it cross-cuts payments+expenses+bills, so it lives outside any single repository and outside `budget.py` (which is income/bill normalization). Opens its own `get_connection()` like the repos; sums in `Decimal`, casts to `float` only at the return boundary where QtCharts consumes it.
+- **`expenses` added to `_CORE_TABLES`** — keeps backup/restore validation consistent (restore re-runs `init_db()` anyway). Consequence: pre-feature backups are now rejected by restore validation — accepted for a sole-user pre-release app (user decision).
+- **QtCharts needs no flake change** — verified `from PySide6.QtCharts import QChart` imports inside `nix develop`; it ships with the nixpkgs `pyside6` build. (Fallback documented in `docs/charts-tab-brief.md` if a future rebuild breaks it: add `pkgs.qt6.qtcharts`.)
+- **New views expose a public `refresh()`** — `main_window` refreshes tabs by duck-typing `refresh()` on focus/after-restore; `PaymentsView` only has `_refresh` and is the cautionary example. `ExpensesView`/`ChartsView` both expose public `refresh()`.
 
 - **Eliminate the thread layer rather than bound it (prices.py)** — the leak premise predated yfinance's curl_cffi move; yfinance 1.3.0 already applies a native per-request socket timeout, so the `_call_with_timeout` daemon-thread wrapper was redundant *and* the leak source. Removed it entirely in favor of a direct `_safe_call(fn) -> (ok, value)`; a stalled fetch now raises (surfaced as `ok=False`) instead of needing a wrapper thread to bound it.
 - **Keep curl_cffi; subclass it instead of injecting a plain `requests.Session`** — the roadmap note ("inject a `requests.Session`") predated yfinance 1.3.0, which defaults to `curl_cffi.requests.Session(impersonate="chrome")`. The Chrome impersonation is what keeps Yahoo from blocking requests, so a plain session would have made fetches *less* reliable. `_make_session()` subclasses the curl_cffi session and keeps impersonation.
@@ -112,8 +130,9 @@ _Done this session: leaked daemon threads in `prices.py` eliminated (injected ca
 
 ## Next Steps
 
-1. Build a reporting/charts tab: spending over time, net worth trend using salary + debt + bill + goals data.
-2. (Optional) Add an offscreen-Qt test harness so the views can be smoke-tested.
-3. Re-evaluate whether any custom retry / rate-limit backoff is still worth adding given yfinance 1.3.0 already handles it.
+1. Build the **net-worth trend** view (deferred charts phase) from salary/debt/stock/goals data.
+2. GUI eyeball of the Charts/Expenses tabs (legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
+3. (Optional) Add an offscreen-Qt test harness so the views can be smoke-tested.
+4. Re-evaluate whether any custom retry / rate-limit backoff is still worth adding given yfinance 1.3.0 already handles it.
 
-_Done 2026-06-15 (pm): leaked daemon threads in `prices.py` eliminated (commit `96bb9c9`)._
+_Done 2026-06-16: expense-tracking layer + spending Charts tab (commit `714adcd`); 91 tests; brief at `docs/charts-tab-brief.md`._
