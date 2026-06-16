@@ -4,7 +4,7 @@ A personal finance desktop application for two users (bosko and natty). Tracks r
 
 ## Current Status
 
-Active development — eight tabs fully implemented (Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, Goals). All features are functional and persisted to SQLite. The app launches from the system app menu on NixOS with a custom icon.
+Active development — eight tabs fully implemented (Dashboard, Bills, Payments, Stocks, Stock Tips, Debt Snowball, Income, Goals). All features are functional and persisted to SQLite. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 69-test pytest suite covers the repositories, models, and the `db`/`snowball`/`budget`/`prices` modules.
 
 ## Features
 
@@ -76,7 +76,7 @@ src/financeguru/
 ├── db.py                         # SQLite connection + schema (init_db); row_factory=sqlite3.Row; Decimal adapter
 ├── money.py                      # Decimal helpers (to_decimal, cents, ZERO, CENT) + sqlite3 adapter
 ├── validators.py                 # normalize_ticker() — restricts user tickers before yfinance/DB
-├── prices.py                     # PriceFetcher / AnalystFetcher QThreads — background yfinance lookups with timeout
+├── prices.py                     # PriceFetcher / TipFetcher QThreads — background yfinance lookups; per-ticker timeout + failure reporting
 ├── snowball.py                   # Pure-Python Debt Snowball/Avalanche month-by-month simulator (Decimal)
 ├── budget.py                     # Shared frequency-to-monthly normalization (all pay frequencies, Decimal)
 ├── models/
@@ -122,6 +122,12 @@ share/
 
 ## Recent Changes
 
+**2026-06-15 — Test Coverage Beyond Repositories + Per-Ticker Fetch Feedback**
+
+- Extended the pytest suite from 36 to 69 tests, adding coverage for `db.py` (backup/restore/export-CSV, `_csv_safe`, `_ensure_column`), `snowball.py` (payoff, Snowball/Avalanche ordering, extra & lump-sum payments, interest accrual), `budget.py` (every pay frequency + `monthly_bill` recurrence), and `prices.py` (`_call_with_timeout` plumbing).
+- Surfaced **per-ticker** yfinance fetch failures: `_call_with_timeout` now returns `(ok, value)` so a genuine empty result is distinct from a timeout/error. `PriceFetcher`/`TipFetcher` collect failed tickers and emit a `partial_error` signal; both stock views warn naming exactly which tickers couldn't be fetched.
+- Confirmed the package is already wired into `~/NixOS/flake.nix` and installed on the `gaming` and `natalie-laptop` hosts.
+
 **2026-06-07 (Night #2) — Security Audit #2: CSV Injection, Restore Safety, File Perms**
 
 Second comprehensive security audit of the ~3,500-line codebase, parallelized across three sub-agents (data layer, network/dependencies, file operations). All actionable findings addressed:
@@ -139,55 +145,13 @@ Second comprehensive security audit of the ~3,500-line codebase, parallelized ac
 - `restore_database` validates the source file is real SQLite before overwriting, then clears any stale `-wal`/`-shm`/`-journal` sidecars; triggers a full tab refresh afterward.
 - `export_all_csv` enumerates all user tables from `sqlite_master` and writes one CSV per table to a chosen directory; returns the list of written paths.
 
-**2026-06-07 (Evening) — Goals Budgeting Tab**
-
-- Added a new **Goals** tab (eighth tab, after Debt Snowball). Enter a goal name, total price, and target month; the app computes the monthly savings contribution and auto-creates a recurring "Goal" bill so the commitment appears in Bills and Dashboard.
-- The "Afford By" date picker shows month + year only and snaps to the last day of the chosen month.
-- An **Amount Left** column tracks `price − sum(payments against the goal's bill)`, floored at $0 — decreases each time the Goal bill is marked paid.
-- Editing a goal updates its linked bill. Deleting a goal (with a confirmation dialog) also deletes its linked bill.
-- Added `payment_repo.total_paid_by_bill()` — a single grouped-sum query returning a `dict[int, Decimal]` used by the Goals tab for efficient Amount Left computation.
-
-**2026-06-07 (PM) — Right-Click Menus, Payments Search, and UX Polish**
-
-- Added a reusable `attach_row_menu` helper (`context_menu.py`) and wired right-click context menus into all six data tables. Each menu mirrors the tab's toolbar buttons and reuses the same handlers; right-clicking selects the row under the cursor first.
-- Added a live **search bar** to the Payments tab toolbar (right-aligned). Case-insensitive substring search across bill name, amount, date, and notes; filters in real time on every keystroke.
-- Renamed the **"Salary" tab label to "Income"** in `main_window.py` (module and class names are unchanged).
-- Fixed the **app icon missing from installed NixOS packages**: `flake.nix` now installs the hicolor SVG into the store prefix so `QIcon.fromTheme` resolves correctly outside `nix develop`.
-
-**2026-06-07 — Payments Edit Button and Current-Month Filter**
-
-- Added an **Edit** button and double-click-to-edit to the Payments tab, mirroring the Bills tab pattern. `PaymentDialog` now accepts an existing payment to pre-fill all fields; `payment_repo.update()` persists the changes.
-- Added a **"This month only"** checkbox (checked by default) that filters the Payments list to the current calendar month. Uncheck to see the full payment history.
-
-**2026-06-07 — Currency Precision (Decimal) and Security Hardening**
-
-- Replaced all `float` monetary values with `decimal.Decimal` across models, repositories, views, and the Snowball/Avalanche simulator — eliminates IEEE-754 rounding error in month-by-month debt simulations. A `sqlite3` adapter binds `Decimal` transparently to existing `REAL` columns; no schema migration required.
-- Locked `finance.db` file permissions to `0600` and the data directory to `0700` (plaintext financial data no longer world-readable).
-- Added `validators.py` with `normalize_ticker()` — user-supplied tickers are restricted to a safe charset before reaching yfinance or the DB.
-- Added 15-second per-ticker timeout to all yfinance calls; Refresh buttons re-enable via the thread's `finished` signal; threads are shut down cleanly on window close.
-- Pinned `PySide6 >=6.7,<7` and `yfinance >=1.3,<2` in `pyproject.toml`; added `*.db`/`*.sqlite*` to `.gitignore`.
-- Added identifier validation to `db.py:_ensure_column` to guard against injection through future non-literal callers.
-
-**2026-06-05 — Stock Tips, Debt Snowball, Salary, and Lump-Sum Payments**
-
-- Added Stock Tips tab with analyst consensus data fetched from yfinance.
-- Added Debt Snowball tab with pure-Python Snowball/Avalanche simulator, per-debt payment schedule table, and one-time lump-sum extra payment support.
-- Added Salary tab with multi-frequency income entry, monthly bill subtraction, and savings-rate slider with annual projections.
-- Added "specific days" pay frequency (e.g., 1st and 15th) with a calendar day-picker grid.
-
-**2026-06-04 — Project inception and full initial build**
-
-- Scaffolded the entire project from scratch: Nix flake, pyproject.toml, SQLite schema, dataclasses, repository layer, and tabbed UI.
-- Implemented Bills, Payments, Stocks, and Dashboard tabs.
-- Added live price fetching via yfinance QThread, XDG desktop entry, and custom SVG app icon.
-- Fixed multiple Nix packaging issues and wired Qt plugin paths via `qt6.wrapQtAppsHook`.
+_Earlier session entries are recorded in [session-summary-archive.md](session-summary-archive.md) and git history._
 
 ## Roadmap
 
-- **NixOS integration** — Wire `financeguru.url` input into `~/NixOS/flake.nix` and add to a host's `environment.systemPackages`.
-- **Tests** — `tests/` directory exists but is empty; add repository and simulation unit tests.
-- **Error handling** — User-visible feedback when yfinance price or analyst data fetch fails.
-- **Reporting / charts** — Spending over time, net worth trend using the salary, debt, and bill data now available.
+- **yfinance robustness** — Inject a `requests.Session` with native socket timeouts to stop daemon threads leaking on a stuck fetch; add structured retry / rate-limit backoff (per-ticker failures are surfaced to the user, but not retried automatically).
+- **View tests** — Add an offscreen-Qt harness so the PySide6 views can be smoke-tested (the non-UI modules are covered).
+- **Reporting / charts** — Spending over time, net worth trend using the salary, debt, bill, and goals data now available.
 - **Multi-user support** — App is used by two people (bosko, natty); per-user data partitioning is not yet implemented.
 - **Schema migration utility** — Lightweight helper beyond the current try/except column-add approach.
 

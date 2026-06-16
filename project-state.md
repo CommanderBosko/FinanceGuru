@@ -1,6 +1,6 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-06-14 — first test suite (repositories + Goal model)_
+_Last updated: 2026-06-15 — test coverage extended to db/snowball/budget/prices; per-ticker fetch feedback_
 
 ## Current Project State
 
@@ -28,7 +28,13 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - Dependency versions pinned in `pyproject.toml` (`PySide6 >=6.7,<7`, `yfinance >=1.3,<2`)
 - `.gitignore` excludes `*.db` and `*.sqlite*`
 - Two comprehensive security audits completed (2026-06-07); all actionable findings addressed
-- Repository-layer pytest suite (36 tests) covering all seven repositories plus the `Goal` model, run against a per-test temp-file SQLite database created via the real `init_db()` (`tests/conftest.py` fixture); verifies CRUD round-trips, `Decimal`↔`REAL` exactness, FK `ON DELETE CASCADE`/`SET NULL`, payment aggregation/month filtering, NULL preservation, and `months_remaining`/`monthly_savings` math
+- Pytest suite (69 tests) run against a per-test temp-file SQLite database created via the real `init_db()` (`tests/conftest.py` fixture):
+  - **Repositories + `Goal` model** — CRUD round-trips, `Decimal`↔`REAL` exactness, FK `ON DELETE CASCADE`/`SET NULL`, payment aggregation/month filtering, NULL preservation, `months_remaining`/`monthly_savings` math
+  - **`db.py`** (`test_db.py`) — backup round-trip + `chmod 600`, restore reverts live data / writes the `.pre-restore-*.bak` safety copy / rejects a non-FinanceGuru SQLite file, `export_all_csv` (one file per table + headers + perms), `_csv_safe` formula-injection neutralization, `_ensure_column` idempotency + identifier rejection
+  - **`snowball.py`** (`test_snowball.py`) — two-plan return, zero-interest payoff, snowball-by-balance vs avalanche-by-rate ordering, extra/lump-sum acceleration, interest accrual, empty input, `payoff_date` format
+  - **`budget.py`** (`test_budget.py`) — every pay frequency, specific-days, unknown-frequency fallback, `parse_pay_days`/`format_pay_days`, `monthly_bill` across recurrence + inactive
+  - **`prices.py`** (`test_prices.py`) — `_call_with_timeout` success / success-with-None / exception / timeout
+- yfinance fetch surfaces **per-ticker** failures: `_call_with_timeout` returns `(ok, value)` so a genuine empty result (e.g. delisted ticker → `ok=True, value=None`) is distinct from a timeout/error (`ok=False`); `PriceFetcher`/`TipFetcher` collect failed tickers and emit a `partial_error` signal; both stock views show a warning naming exactly which tickers could not be fetched
 
 **What is in progress / stub state:**
 - (none)
@@ -39,9 +45,9 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 ## Current Goals
 
 ### Short-term (next 1-3 sessions)
-1. Wire the package into the NixOS flake at `~/NixOS/flake.nix` — add `financeguru.url` as an input and add the package to a host's `environment.systemPackages` (top priority).
-2. Add user-visible error feedback when yfinance price or analyst data fetch fails.
-3. Extend test coverage beyond the repository layer: `db.py` backup/restore/export-CSV and `_csv_safe`, the `snowball.py` simulator, and `budget.py` frequency normalization.
+1. Fix the leaked daemon threads in `prices.py` by injecting a `requests.Session` with native socket timeouts into yfinance calls (residual security tech debt).
+2. Add structured retry / rate-limit handling for yfinance fetches (per-ticker failures are now surfaced to the user, but there is no automatic retry or backoff).
+3. Consider a reporting/charts tab (spending over time, net worth trend) using salary + debt + bill + goals data.
 
 ### Long-term
 - Multi-user data partitioning (bosko vs. natty views/profiles)
@@ -87,20 +93,19 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Known Issues / Tech Debt
 
-- Test coverage is repository-layer + `Goal` model only; `db.py` (backup/restore/CSV), `snowball.py`, `budget.py`, and the views remain untested.
+- Test coverage now spans the repositories, `Goal` model, `db.py` (backup/restore/CSV/`_csv_safe`), `snowball.py`, `budget.py`, and the `prices.py` timeout plumbing. The PySide6 **views** themselves remain untested (no offscreen-Qt harness yet).
 - No formal schema migration strategy — new columns are added with try/except `ALTER TABLE`; dropping or renaming columns still requires manual intervention.
 - Multi-user support is not implemented; both users share the same SQLite file at `~/.local/share/financeguru/finance.db`.
-- Stock price and analyst data fetching depends on yfinance / Yahoo Finance availability. A generic user-facing error is shown on failure (fetch details go to stderr), but structured retry or rate-limit handling is not implemented.
+- Stock price and analyst data fetching depends on yfinance / Yahoo Finance availability. Whole-fetch and per-ticker failures are now surfaced to the user (fetch details go to stderr), but there is no automatic retry or rate-limit backoff.
 - **Residual security tech debt (intentionally deferred):**
   - Daemon threads in `prices.py` can leak if the QThread is torn down while a blocking yfinance call is in flight. Fix requires injecting a `requests.Session` with native socket timeouts into yfinance.
   - `pyproject.toml` version ranges are fine under Nix (locked by `flake.lock`) but permissive enough to allow a breaking minor update for `pip install` users.
   - `yfinance` is an unofficial Yahoo Finance scraper — no SLA, no audit trail, can break on Yahoo API changes. Largest residual supply-chain exposure.
 - The Debt Snowball simulator assumes all debts start at the current balance with no partial-month handling.
-- The app has not yet been wired into the NixOS system flake (`~/NixOS/flake.nix`).
 
 ## Next Steps
 
-1. Add `financeguru` as a NixOS flake input in `~/NixOS/flake.nix` and install to a host (top priority).
-2. Extend tests to `db.py` (backup/restore/export-CSV, `_csv_safe`), `snowball.py`, and `budget.py`.
-3. (Residual security) Fix leaked daemon threads in `prices.py` by injecting a `requests.Session` with native socket timeouts into yfinance calls.
-4. Consider a reporting/charts tab: spending over time, net worth trend using salary + debt + bill + goals data.
+1. (Residual security) Fix leaked daemon threads in `prices.py` by injecting a `requests.Session` with native socket timeouts into yfinance calls.
+2. Add structured retry / rate-limit backoff for yfinance fetches (per-ticker failures are surfaced now, but not retried automatically).
+3. Consider a reporting/charts tab: spending over time, net worth trend using salary + debt + bill + goals data.
+4. (Optional) Add an offscreen-Qt test harness so the views can be smoke-tested.
