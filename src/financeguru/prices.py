@@ -1,6 +1,5 @@
 import math
 import sys
-import threading
 import traceback
 from typing import Callable, TypeVar
 
@@ -12,37 +11,56 @@ _T = TypeVar("_T")
 # URLs, hostnames, and proxy details) is logged to stderr instead of the UI.
 _FETCH_ERROR_MSG = "Could not fetch market data. Check your connection and try again."
 
-# Hard cap on a single ticker fetch. yfinance/requests can hang on a slow or
-# unresponsive Yahoo endpoint with no timeout of its own; without this bound a
-# stuck network call would leave the Refresh button disabled ("Fetching…")
-# forever, recoverable only by restarting the app.
-_FETCH_TIMEOUT_S = 15.0
+# Per-request socket timeout (connect + read), in seconds. yfinance passes its
+# own 30s default to every request and re-fetches cookies/crumbs, so one
+# high-level call can issue several requests. Capping the timeout here bounds how
+# long any single blocking network call can run, so a stalled Yahoo endpoint
+# unwinds promptly — including when the window is closed mid-fetch — instead of
+# pinning the worker thread until the process exits.
+_REQUEST_TIMEOUT_S = 8.0
 
 
-def _call_with_timeout(fn: Callable[[], _T], timeout: float) -> tuple[bool, _T | None]:
-    """Run fn() in a daemon thread, returning ``(ok, value)``.
+def _make_session():
+    """A curl_cffi session preserving yfinance's Chrome impersonation while
+    forcing a short per-request socket timeout.
 
-    ``ok`` is True only when fn() ran to completion; it is False on a timeout or
-    an exception. This lets the caller tell a genuine "no data" result (ok=True,
-    value=None) apart from a fetch that failed (ok=False), so per-ticker network
-    or rate-limit failures can be surfaced instead of silently blanking a value.
-
-    Guarantees the caller is never blocked longer than `timeout`, so the
-    surrounding fetch loop always makes progress and emits a result.
+    yfinance defaults to a curl_cffi ``Session(impersonate="chrome")`` (the
+    impersonation is what keeps Yahoo from blocking the requests) and passes
+    ``timeout=30`` explicitly on every request, which overrides any session-level
+    default. We subclass the session to *cap* that timeout instead, so the native
+    socket timeout — not a wrapper thread — bounds every call. This is what lets
+    us drop the old daemon-thread timeout and the leak that came with it.
     """
-    box: dict = {}
+    from curl_cffi import requests as _creq
 
-    def target():
-        try:
-            box["value"] = fn()
-            box["ok"] = True
-        except Exception:
-            traceback.print_exc(file=sys.stderr)
+    class _CappedSession(_creq.Session):
+        def request(self, *args, **kwargs):
+            t = kwargs.get("timeout")
+            kwargs["timeout"] = (
+                _REQUEST_TIMEOUT_S if t is None else min(t, _REQUEST_TIMEOUT_S)
+            )
+            return super().request(*args, **kwargs)
 
-    t = threading.Thread(target=target, daemon=True)
-    t.start()
-    t.join(timeout)
-    return box.get("ok", False), box.get("value")
+    return _CappedSession(impersonate="chrome")
+
+
+def _safe_call(fn: Callable[[], _T]) -> tuple[bool, _T | None]:
+    """Run fn() directly, returning ``(ok, value)``.
+
+    ``ok`` is True only when fn() ran to completion; it is False if it raised.
+    This lets the caller tell a genuine "no data" result (ok=True, value=None)
+    apart from a fetch that failed (ok=False), so per-ticker network or
+    rate-limit failures can be surfaced instead of silently blanking a value.
+
+    yfinance now applies its own socket timeout (capped via :func:`_make_session`),
+    so a stalled fetch raises rather than hanging — no wrapper thread is needed to
+    bound it, and a timeout surfaces here as ``ok=False``.
+    """
+    try:
+        return True, fn()
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        return False, None
 
 
 class PriceFetcher(QThread):
@@ -57,11 +75,12 @@ class PriceFetcher(QThread):
     def run(self) -> None:
         try:
             import yfinance as yf
+            session = _make_session()
             prices: dict[str, float | None] = {}
             failed: list[str] = []
             for ticker in self._tickers:
-                ok, value = _call_with_timeout(
-                    lambda t=ticker: self._fetch_price(yf, t), _FETCH_TIMEOUT_S
+                ok, value = _safe_call(
+                    lambda t=ticker: self._fetch_price(yf, t, session)
                 )
                 prices[ticker] = value if ok else None
                 if not ok:
@@ -74,11 +93,11 @@ class PriceFetcher(QThread):
             self.fetch_error.emit(_FETCH_ERROR_MSG)
 
     @staticmethod
-    def _fetch_price(yf, ticker: str) -> float | None:
+    def _fetch_price(yf, ticker: str, session) -> float | None:
         # Coerce and sanity-check the network value: yfinance can return None,
         # NaN, or absurd numbers for delisted/bad tickers, which would otherwise
         # propagate silently into market-value and gain/loss as "nan".
-        lp = float(yf.Ticker(ticker).fast_info.last_price)
+        lp = float(yf.Ticker(ticker, session=session).fast_info.last_price)
         return lp if math.isfinite(lp) and lp > 0 else None
 
 
@@ -98,14 +117,19 @@ class TipFetcher(QThread):
     def run(self) -> None:
         try:
             import yfinance as yf
+            session = _make_session()
             result: TipData = {}
             failed: list[str] = []
             for ticker in self._tickers:
-                ok, data = _call_with_timeout(
-                    lambda t=ticker: self._fetch_one(yf.Ticker(t)), _FETCH_TIMEOUT_S
+                ok, value = _safe_call(
+                    lambda t=ticker: self._fetch_one(yf.Ticker(t, session=session))
                 )
+                if ok and value is not None:
+                    fetch_failed, data = value
+                else:
+                    fetch_failed, data = True, None
                 result[ticker] = data or {"action": None, "target": None, "count": None}
-                if not ok:
+                if fetch_failed:
                     failed.append(ticker)
             self.tips_ready.emit(result)
             if failed:
@@ -115,10 +139,19 @@ class TipFetcher(QThread):
             self.fetch_error.emit(_FETCH_ERROR_MSG)
 
     @staticmethod
-    def _fetch_one(t) -> dict:
+    def _fetch_one(t) -> tuple[bool, dict]:
+        """Return ``(failed, data)``.
+
+        ``failed`` is True when a network fetch errored (e.g. a capped-timeout or
+        rate-limit), as opposed to a ticker that simply has no analyst coverage
+        (no error, just empty data). Each field is fetched independently so one
+        missing field doesn't blank the other; an error in either marks the
+        ticker failed so the view can name it to the user.
+        """
         action = None
         target = None
         count = None
+        failed = False
         try:
             pts = t.analyst_price_targets
             if pts and pts.get("mean"):
@@ -126,7 +159,8 @@ class TipFetcher(QThread):
                 # Reject NaN/inf/non-positive so they don't reach the UI as "nan".
                 target = mean if math.isfinite(mean) and mean > 0 else None
         except Exception:
-            pass
+            traceback.print_exc(file=sys.stderr)
+            failed = True
         try:
             summary = t.recommendations_summary
             if summary is not None and not summary.empty:
@@ -161,5 +195,6 @@ class TipFetcher(QThread):
                     else:
                         action = "Strong Sell"
         except Exception:
-            pass
-        return {"action": action, "target": target, "count": count}
+            traceback.print_exc(file=sys.stderr)
+            failed = True
+        return failed, {"action": action, "target": target, "count": count}
