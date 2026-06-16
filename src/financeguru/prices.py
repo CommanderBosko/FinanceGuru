@@ -2,8 +2,11 @@ import math
 import sys
 import threading
 import traceback
+from typing import Callable, TypeVar
 
 from PySide6.QtCore import QThread, Signal
+
+_T = TypeVar("_T")
 
 # Shown to the user on any fetch failure. The raw exception (which can include
 # URLs, hostnames, and proxy details) is logged to stderr instead of the UI.
@@ -16,8 +19,13 @@ _FETCH_ERROR_MSG = "Could not fetch market data. Check your connection and try a
 _FETCH_TIMEOUT_S = 15.0
 
 
-def _call_with_timeout(fn, timeout: float):
-    """Run fn() in a daemon thread, returning its result or None on timeout/error.
+def _call_with_timeout(fn: Callable[[], _T], timeout: float) -> tuple[bool, _T | None]:
+    """Run fn() in a daemon thread, returning ``(ok, value)``.
+
+    ``ok`` is True only when fn() ran to completion; it is False on a timeout or
+    an exception. This lets the caller tell a genuine "no data" result (ok=True,
+    value=None) apart from a fetch that failed (ok=False), so per-ticker network
+    or rate-limit failures can be surfaced instead of silently blanking a value.
 
     Guarantees the caller is never blocked longer than `timeout`, so the
     surrounding fetch loop always makes progress and emits a result.
@@ -27,18 +35,20 @@ def _call_with_timeout(fn, timeout: float):
     def target():
         try:
             box["value"] = fn()
+            box["ok"] = True
         except Exception:
-            box["value"] = None
+            traceback.print_exc(file=sys.stderr)
 
     t = threading.Thread(target=target, daemon=True)
     t.start()
     t.join(timeout)
-    return box.get("value")
+    return box.get("ok", False), box.get("value")
 
 
 class PriceFetcher(QThread):
     prices_ready = Signal(dict)   # {ticker: float | None}
     fetch_error = Signal(str)
+    partial_error = Signal(list)  # [ticker, ...] that timed out or errored
 
     def __init__(self, tickers: list[str], parent=None):
         super().__init__(parent)
@@ -48,11 +58,17 @@ class PriceFetcher(QThread):
         try:
             import yfinance as yf
             prices: dict[str, float | None] = {}
+            failed: list[str] = []
             for ticker in self._tickers:
-                prices[ticker] = _call_with_timeout(
+                ok, value = _call_with_timeout(
                     lambda t=ticker: self._fetch_price(yf, t), _FETCH_TIMEOUT_S
                 )
+                prices[ticker] = value if ok else None
+                if not ok:
+                    failed.append(ticker)
             self.prices_ready.emit(prices)
+            if failed:
+                self.partial_error.emit(failed)
         except Exception:
             traceback.print_exc(file=sys.stderr)
             self.fetch_error.emit(_FETCH_ERROR_MSG)
@@ -73,6 +89,7 @@ TipData = dict[str, dict]
 class TipFetcher(QThread):
     tips_ready = Signal(dict)
     fetch_error = Signal(str)
+    partial_error = Signal(list)  # [ticker, ...] that timed out or errored
 
     def __init__(self, tickers: list[str], parent=None):
         super().__init__(parent)
@@ -82,12 +99,17 @@ class TipFetcher(QThread):
         try:
             import yfinance as yf
             result: TipData = {}
+            failed: list[str] = []
             for ticker in self._tickers:
-                data = _call_with_timeout(
+                ok, data = _call_with_timeout(
                     lambda t=ticker: self._fetch_one(yf.Ticker(t)), _FETCH_TIMEOUT_S
                 )
                 result[ticker] = data or {"action": None, "target": None, "count": None}
+                if not ok:
+                    failed.append(ticker)
             self.tips_ready.emit(result)
+            if failed:
+                self.partial_error.emit(failed)
         except Exception:
             traceback.print_exc(file=sys.stderr)
             self.fetch_error.emit(_FETCH_ERROR_MSG)

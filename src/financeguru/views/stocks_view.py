@@ -183,6 +183,7 @@ class StocksView(QWidget):
         self._fetcher = fetcher
         fetcher.prices_ready.connect(self._on_prices_ready)
         fetcher.fetch_error.connect(self._on_fetch_error)
+        fetcher.partial_error.connect(self._on_partial_error)
         fetcher.finished.connect(self._restore_refresh_button)
         fetcher.start()
 
@@ -206,3 +207,13 @@ class StocksView(QWidget):
         self._btn_refresh.setEnabled(True)
         self._btn_refresh.setText("Refresh Prices")
         QMessageBox.warning(self, "Price Fetch Failed", f"Could not fetch prices:\n{message}")
+
+    def _on_partial_error(self, tickers: list) -> None:
+        QMessageBox.warning(
+            self,
+            "Some Prices Unavailable",
+            "Could not fetch a price for: "
+            + ", ".join(tickers)
+            + ".\n\nThis is usually a temporary network or rate-limit issue. "
+            "Try refreshing again shortly.",
+        )

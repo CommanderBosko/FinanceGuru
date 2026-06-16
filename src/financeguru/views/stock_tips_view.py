@@ -173,6 +173,7 @@ class StockTipsView(QWidget):
         self._fetcher = TipFetcher(tickers, self)
         self._fetcher.tips_ready.connect(self._on_tips_ready)
         self._fetcher.fetch_error.connect(self._on_fetch_error)
+        self._fetcher.partial_error.connect(self._on_partial_error)
         self._fetcher.finished.connect(self._restore_refresh_button)
         self._fetcher.start()
 
@@ -205,3 +206,13 @@ class StockTipsView(QWidget):
         self._btn_refresh.setEnabled(True)
         self._btn_refresh.setText("Refresh Analyst Data")
         QMessageBox.warning(self, "Fetch Failed", f"Could not fetch analyst data:\n{message}")
+
+    def _on_partial_error(self, tickers: list) -> None:
+        QMessageBox.warning(
+            self,
+            "Some Data Unavailable",
+            "Could not fetch analyst data for: "
+            + ", ".join(tickers)
+            + ".\n\nThis is usually a temporary network or rate-limit issue. "
+            "Try refreshing again shortly.",
+        )
