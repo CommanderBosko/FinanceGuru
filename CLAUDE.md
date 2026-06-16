@@ -14,6 +14,10 @@ Before you do any work, state how you'll verify it with the `/verify` skill — 
 
 Once scope and the verification plan are set, spawn as many sub-agents as the goal needs to get it done faster. Independent pieces of work — researching options, searching the tree, scaffolding separate files, drafting changes across multiple areas — should run in parallel rather than serially. Fan out aggressively when tasks don't depend on each other; reserve serial work for genuine dependencies. This is a large time saver, so default to delegating breadth-first instead of plodding through everything yourself.
 
+## Use Existing Skills First
+
+Before doing a task by hand, check whether an existing skill already covers it and invoke it instead of improvising. Skills encode the agreed, repeatable way to do a thing — prefer them over ad-hoc steps. If you find yourself doing the same multi-step task a second time and no skill exists, offer to create one.
+
 ## Project
 
 FinanceGuru is a personal finance desktop app for two users (bosko and natty). Feature areas:
