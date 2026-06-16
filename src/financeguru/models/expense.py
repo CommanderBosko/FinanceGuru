@@ -4,12 +4,9 @@ from typing import Optional
 
 
 @dataclass
-class Bill:
-    name: str
+class Expense:
     amount: Decimal
-    due_day: int
-    recurrence: str = "monthly"
-    is_active: bool = True
-    notes: Optional[str] = None
+    spent_date: str
     category: str = "Other"
+    notes: Optional[str] = None
     id: Optional[int] = None

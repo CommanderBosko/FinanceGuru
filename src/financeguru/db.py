@@ -13,6 +13,7 @@ _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # an unrelated SQLite file before it overwrites the live data.
 _CORE_TABLES = {
     "bills", "payments", "stocks", "incomes", "debts", "goals", "stock_tips",
+    "expenses",
 }
 
 # A cell whose first character is one of these is interpreted as a formula by
@@ -82,7 +83,8 @@ def init_db() -> None:
                 due_day     INTEGER NOT NULL,
                 recurrence  TEXT    NOT NULL DEFAULT 'monthly',
                 is_active   INTEGER NOT NULL DEFAULT 1,
-                notes       TEXT
+                notes       TEXT,
+                category    TEXT    NOT NULL DEFAULT 'Other'
             );
 
             CREATE TABLE IF NOT EXISTS payments (
@@ -142,10 +144,19 @@ def init_db() -> None:
                 analyst_count   INTEGER,
                 analyst_updated TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS expenses (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                amount      REAL    NOT NULL,
+                spent_date  TEXT    NOT NULL,
+                category    TEXT    NOT NULL DEFAULT 'Other',
+                notes       TEXT
+            );
         """)
 
         # Migrations for databases created before a column existed.
         _ensure_column(conn, "incomes", "pay_days", "pay_days TEXT")
+        _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
 
 
 def backup_database(dest: Path) -> None:

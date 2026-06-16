@@ -11,8 +11,10 @@ from PySide6.QtWidgets import (
 
 from financeguru import db
 from financeguru.views.bills_view import BillsView
+from financeguru.views.charts_view import ChartsView
 from financeguru.views.dashboard_view import DashboardView
 from financeguru.views.debt_snowball_view import DebtSnowballView
+from financeguru.views.expenses_view import ExpensesView
 from financeguru.views.goals_view import GoalsView
 from financeguru.views.payments_view import PaymentsView
 from financeguru.views.salary_view import SalaryView
@@ -39,11 +41,13 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._dashboard, "Dashboard")
         self._tabs.addTab(BillsView(), "Bills")
         self._tabs.addTab(PaymentsView(), "Payments")
+        self._tabs.addTab(ExpensesView(), "Expenses")
         self._tabs.addTab(self._salary, "Income")
         self._tabs.addTab(StocksView(), "Stocks")
         self._tabs.addTab(StockTipsView(), "Stock Tips")
         self._tabs.addTab(DebtSnowballView(), "Debt Snowball")
         self._tabs.addTab(GoalsView(), "Goals")
+        self._tabs.addTab(ChartsView(), "Charts")
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self._tabs)

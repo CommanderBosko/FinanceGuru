@@ -52,3 +52,23 @@ def test_delete_removes_bill():
     assert bill_id
     bills.delete(bill_id)
     assert bills.get_all() == []
+
+
+def test_category_round_trips_and_defaults_to_other():
+    # Explicit category survives add/get_all.
+    with_cat = Bill(name="Internet", amount=Decimal("60.00"), due_day=10,
+                    category="Utilities")
+    cat_id = bills.add(with_cat)
+    bill = next(b for b in bills.get_all() if b.id == cat_id)
+    assert bill.category == "Utilities"
+
+    # Omitting category falls back to the model default "Other".
+    default_id = bills.add(Bill(name="Misc", amount=Decimal("5.00"), due_day=20))
+    default_bill = next(b for b in bills.get_all() if b.id == default_id)
+    assert default_bill.category == "Other"
+
+    # Updating the category persists.
+    bill.category = "Internet & Phone"
+    bills.update(bill)
+    reloaded = next(b for b in bills.get_all() if b.id == cat_id)
+    assert reloaded.category == "Internet & Phone"

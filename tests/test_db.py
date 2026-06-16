@@ -123,3 +123,59 @@ def test_ensure_column_is_idempotent_and_validates_identifiers():
             db._ensure_column(conn, "incomes; DROP TABLE bills", "x", "x TEXT")
         with pytest.raises(ValueError):
             db._ensure_column(conn, "incomes", "pay_days", "DROP TABLE bills")
+
+
+# --- bills.category schema + migration -------------------------------------
+
+def _column_names(conn, table: str) -> set[str]:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def test_init_db_creates_bills_category_column():
+    with db.get_connection() as conn:
+        assert "category" in _column_names(conn, "bills")
+
+
+def test_ensure_column_adds_category_to_a_legacy_bills_table():
+    # Drop and recreate a legacy `bills` table lacking the `category` column,
+    # writing directly to the fixture's temp DB path.
+    con = sqlite3.connect(db.DB_PATH)
+    try:
+        con.execute("DROP TABLE bills")
+        con.execute(
+            "CREATE TABLE bills ("
+            " id INTEGER PRIMARY KEY,"
+            " name TEXT NOT NULL,"
+            " amount REAL NOT NULL,"
+            " due_day INTEGER NOT NULL,"
+            " recurrence TEXT NOT NULL DEFAULT 'monthly',"
+            " is_active INTEGER NOT NULL DEFAULT 1,"
+            " notes TEXT)"
+        )
+        con.execute(
+            "INSERT INTO bills (name, amount, due_day) VALUES ('Legacy', 12.0, 5)"
+        )
+        con.commit()
+    finally:
+        con.close()
+
+    with db.get_connection() as conn:
+        assert "category" not in _column_names(conn, "bills")
+        db._ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
+        assert "category" in _column_names(conn, "bills")
+        row = conn.execute("SELECT category FROM bills WHERE name='Legacy'").fetchone()
+        assert row["category"] == "Other"
+
+
+# --- expenses core table ---------------------------------------------------
+
+def test_expenses_is_a_core_table():
+    assert "expenses" in _CORE_TABLES
+
+
+def test_export_writes_a_csv_for_the_expenses_table(tmp_path):
+    _seed()
+    out = tmp_path / "export"
+    written = db.export_all_csv(out)
+    names = {p.name for p in written}
+    assert "expenses.csv" in names

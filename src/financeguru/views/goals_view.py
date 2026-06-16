@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from financeguru.categories import GOAL_NOTE
 from financeguru.models.bill import Bill
 from financeguru.models.goal import Goal, months_remaining
 from financeguru.money import ZERO
@@ -16,8 +17,6 @@ from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.goal_dialog import GoalDialog
 
 _COLS = ["Goal", "Price", "Amount Left", "Afford By", "Months Left", "Save / Month"]
-# Marks the bill a goal auto-creates in the Bills tab.
-GOAL_NOTE = "Goal"
 
 
 class GoalsView(QWidget):

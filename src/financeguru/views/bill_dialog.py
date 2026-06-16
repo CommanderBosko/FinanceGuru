@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
     QLineEdit, QComboBox, QSpinBox, QTextEdit, QVBoxLayout,
 )
+from financeguru.categories import CATEGORIES
 from financeguru.models.bill import Bill
 from financeguru.money import cents
 
@@ -36,6 +37,12 @@ class BillDialog(QDialog):
             self._recurrence.setCurrentText(bill.recurrence)
         form.addRow("Recurrence", self._recurrence)
 
+        self._category = QComboBox()
+        self._category.addItems(CATEGORIES)
+        if bill:
+            self._category.setCurrentText(bill.category)
+        form.addRow("Category", self._category)
+
         self._notes = QTextEdit(bill.notes or "" if bill else "")
         self._notes.setFixedHeight(64)
         form.addRow("Notes", self._notes)
@@ -57,5 +64,6 @@ class BillDialog(QDialog):
             amount=cents(self._amount.value()),
             due_day=self._due_day.value(),
             recurrence=self._recurrence.currentText(),
+            category=self._category.currentText(),
             notes=self._notes.toPlainText().strip() or None,
         )
