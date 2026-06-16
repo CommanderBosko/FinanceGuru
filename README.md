@@ -76,7 +76,7 @@ src/financeguru/
 ├── db.py                         # SQLite connection + schema (init_db); row_factory=sqlite3.Row; Decimal adapter
 ├── money.py                      # Decimal helpers (to_decimal, cents, ZERO, CENT) + sqlite3 adapter
 ├── validators.py                 # normalize_ticker() — restricts user tickers before yfinance/DB
-├── prices.py                     # PriceFetcher / TipFetcher QThreads — background yfinance lookups; per-ticker timeout + failure reporting
+├── prices.py                     # PriceFetcher / TipFetcher QThreads — background yfinance lookups via a capped curl_cffi session; per-ticker failure reporting
 ├── snowball.py                   # Pure-Python Debt Snowball/Avalanche month-by-month simulator (Decimal)
 ├── budget.py                     # Shared frequency-to-monthly normalization (all pay frequencies, Decimal)
 ├── models/
@@ -122,6 +122,13 @@ share/
 
 ## Recent Changes
 
+**2026-06-15 (pm) — Eliminated the prices.py Daemon-Thread Leak**
+
+- Removed the `_call_with_timeout` daemon-thread wrapper that could leave an orphaned thread running past its join. Replaced with a direct `_safe_call(fn) -> (ok, value)`; yfinance 1.3.0's native socket timeout now bounds every call.
+- Added `_make_session()`: a `curl_cffi` session that preserves yfinance's Chrome impersonation (so Yahoo doesn't block requests) but caps every request's socket timeout at 8s. Both fetchers pass `session=` into `yf.Ticker(...)`.
+- `TipFetcher._fetch_one` now returns `(failed, data)` so a network error on one analyst field flags the ticker while genuinely-absent coverage does not.
+- Suite 69 → 71 tests, all green.
+
 **2026-06-15 — Test Coverage Beyond Repositories + Per-Ticker Fetch Feedback**
 
 - Extended the pytest suite from 36 to 69 tests, adding coverage for `db.py` (backup/restore/export-CSV, `_csv_safe`, `_ensure_column`), `snowball.py` (payoff, Snowball/Avalanche ordering, extra & lump-sum payments, interest accrual), `budget.py` (every pay frequency + `monthly_bill` recurrence), and `prices.py` (`_call_with_timeout` plumbing).
@@ -149,9 +156,9 @@ _Earlier session entries are recorded in [session-summary-archive.md](session-su
 
 ## Roadmap
 
-- **yfinance robustness** — Inject a `requests.Session` with native socket timeouts to stop daemon threads leaking on a stuck fetch; add structured retry / rate-limit backoff (per-ticker failures are surfaced to the user, but not retried automatically).
+- **Reporting / charts** — Spending over time, net worth trend using the salary, debt, bill, and goals data now available. (Top new-feature item.)
 - **View tests** — Add an offscreen-Qt harness so the PySide6 views can be smoke-tested (the non-UI modules are covered).
-- **Reporting / charts** — Spending over time, net worth trend using the salary, debt, bill, and goals data now available.
+- **yfinance robustness** — Native socket timeouts are now in place (daemon-thread leak resolved). yfinance 1.3.0 also provides retry/backoff and 429 handling itself, so any *custom* retry layer is likely redundant — re-evaluate before building.
 - **Multi-user support** — App is used by two people (bosko, natty); per-user data partitioning is not yet implemented.
 - **Schema migration utility** — Lightweight helper beyond the current try/except column-add approach.
 

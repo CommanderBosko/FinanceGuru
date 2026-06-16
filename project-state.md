@@ -1,6 +1,6 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-06-15 — test coverage extended to db/snowball/budget/prices; per-ticker fetch feedback_
+_Last updated: 2026-06-15 (pm) — eliminated prices.py daemon-thread leak via injected capped curl_cffi session_
 
 ## Current Project State
 
@@ -11,7 +11,7 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - Full Bills CRUD with Mark Paid (creates a linked Payment record; cascade-delete on bill removal)
 - Payment history log with Add, Edit (button and double-click), and Delete; "This month only" checkbox filters to the current YYYY-MM- prefix by default; unchecking shows full history; live search bar filters by bill name, amount, date, or notes
 - Right-click context menus on all seven data tables (Bills, Payments, Income, Stocks, Stock Tips, Debt Snowball, Goals) — mirrors each tab's toolbar actions via the reusable `attach_row_menu` helper in `context_menu.py`; right-clicking selects the row under the cursor first
-- Stock portfolio table with Add/Edit/Delete and live price refresh via yfinance QThread (with 15s per-ticker timeout and button re-enable on completion)
+- Stock portfolio table with Add/Edit/Delete and live price refresh via yfinance QThread (per-request socket timeout capped at 8s through an injected curl_cffi session; button re-enables on completion)
 - Dashboard showing monthly bill status (Paid / Overdue / Upcoming) with cost summary, auto-refreshing on tab focus
 - Stock Tips tab: track personal tips with analyst consensus and mean price targets fetched from yfinance; cached in `stock_tips` table
 - Debt Snowball tab: track debts with balance, APR, and minimum payment; month-by-month simulator computes both Snowball and Avalanche payoff schedules in exact `Decimal` arithmetic; side-by-side comparison; per-debt monthly payment schedule table; one-time lump-sum extra payments (windfalls)
@@ -34,7 +34,8 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
   - **`snowball.py`** (`test_snowball.py`) — two-plan return, zero-interest payoff, snowball-by-balance vs avalanche-by-rate ordering, extra/lump-sum acceleration, interest accrual, empty input, `payoff_date` format
   - **`budget.py`** (`test_budget.py`) — every pay frequency, specific-days, unknown-frequency fallback, `parse_pay_days`/`format_pay_days`, `monthly_bill` across recurrence + inactive
   - **`prices.py`** (`test_prices.py`) — `_call_with_timeout` success / success-with-None / exception / timeout
-- yfinance fetch surfaces **per-ticker** failures: `_call_with_timeout` returns `(ok, value)` so a genuine empty result (e.g. delisted ticker → `ok=True, value=None`) is distinct from a timeout/error (`ok=False`); `PriceFetcher`/`TipFetcher` collect failed tickers and emit a `partial_error` signal; both stock views show a warning naming exactly which tickers could not be fetched
+- yfinance fetch surfaces **per-ticker** failures: `_safe_call` returns `(ok, value)` so a genuine empty result (e.g. delisted ticker → `ok=True, value=None`) is distinct from a fetch error (`ok=False`); `TipFetcher._fetch_one` additionally returns `(failed, data)` so a network error on one analyst field flags the ticker while genuinely-absent coverage does not; `PriceFetcher`/`TipFetcher` collect failed tickers and emit a `partial_error` signal; both stock views show a warning naming exactly which tickers could not be fetched
+- **No leaked threads in `prices.py`** — the old `_call_with_timeout` daemon-thread wrapper (which could leave an orphaned thread running past its join while yfinance's own request finished) is gone. `_make_session()` returns a `curl_cffi` session that keeps yfinance's Chrome impersonation but subclasses `request()` to cap every request's socket timeout at 8s; both fetchers pass `session=` into `yf.Ticker(...)`. The native socket timeout — not a wrapper thread — now bounds every call
 
 **What is in progress / stub state:**
 - (none)
@@ -45,9 +46,11 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 ## Current Goals
 
 ### Short-term (next 1-3 sessions)
-1. Fix the leaked daemon threads in `prices.py` by injecting a `requests.Session` with native socket timeouts into yfinance calls (residual security tech debt).
-2. Add structured retry / rate-limit handling for yfinance fetches (per-ticker failures are now surfaced to the user, but there is no automatic retry or backoff).
-3. Consider a reporting/charts tab (spending over time, net worth trend) using salary + debt + bill + goals data.
+1. Consider a reporting/charts tab (spending over time, net worth trend) using salary + debt + bill + goals data. **(Now the top new-feature item.)**
+2. (Optional) Add an offscreen-Qt test harness so the PySide6 views can be smoke-tested.
+3. Re-evaluate whether any *custom* retry / rate-limit handling is still worth adding — yfinance 1.3.0 already provides retry/backoff (`YfConfig.network.retries`) and `YFRateLimitError` on HTTP 429, so the original goal is largely redundant.
+
+_Done this session: leaked daemon threads in `prices.py` eliminated (injected capped curl_cffi session, `_call_with_timeout` removed)._
 
 ### Long-term
 - Multi-user data partitioning (bosko vs. natty views/profiles)
@@ -56,6 +59,10 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 
 ## Recent Decisions
 
+- **Eliminate the thread layer rather than bound it (prices.py)** — the leak premise predated yfinance's curl_cffi move; yfinance 1.3.0 already applies a native per-request socket timeout, so the `_call_with_timeout` daemon-thread wrapper was redundant *and* the leak source. Removed it entirely in favor of a direct `_safe_call(fn) -> (ok, value)`; a stalled fetch now raises (surfaced as `ok=False`) instead of needing a wrapper thread to bound it.
+- **Keep curl_cffi; subclass it instead of injecting a plain `requests.Session`** — the roadmap note ("inject a `requests.Session`") predated yfinance 1.3.0, which defaults to `curl_cffi.requests.Session(impersonate="chrome")`. The Chrome impersonation is what keeps Yahoo from blocking requests, so a plain session would have made fetches *less* reliable. `_make_session()` subclasses the curl_cffi session and keeps impersonation.
+- **Cap the timeout inside `request()`, not via a session default** — yfinance passes `timeout=30` explicitly on every request, which overrides any session-level default. Clamping inside the overridden `request()` (`min(timeout, 8s)`) is the only effective lever.
+- **`TipFetcher._fetch_one` returns `(failed, data)`** — with the daemon-thread join gone, a capped-timeout error now raises *inside* `_fetch_one` where the per-field `try/except` would otherwise swallow it. Returning an explicit `failed` flag lets a real network error mark the ticker failed while a ticker with genuinely no analyst coverage (no error, just empty data) is not flagged.
 - **Tests use a per-test temp-file DB, not `:memory:`** — Each repository call opens a fresh `get_connection()`, and a `:memory:` SQLite database is private to a single connection, so it can't be shared across calls within one test. The autouse `temp_db` fixture in `tests/conftest.py` monkeypatches `db.DB_DIR`/`db.DB_PATH` to a `tmp_path` file and runs the real `init_db()`, exercising the actual schema, FK cascades, and the Decimal↔REAL round-trip.
 - **Test helpers use typed keyword args, not `dict(**overrides)`** — A `dict(...).update(overrides)` builder widens every value to the union of all field types, which Pyright then rejects at the dataclass constructor. Plain typed-parameter factory functions keep the editor clean with no runtime change.
 - **`_csv_safe()` uses apostrophe prefix** — OWASP-recommended approach; the apostrophe is stripped by spreadsheet apps before display so the user sees the original value while formula execution is blocked. Applied to every exported cell regardless of table.
@@ -96,16 +103,17 @@ The app has eight fully-functional tabs — Dashboard, Bills, Payments, Stocks, 
 - Test coverage now spans the repositories, `Goal` model, `db.py` (backup/restore/CSV/`_csv_safe`), `snowball.py`, `budget.py`, and the `prices.py` timeout plumbing. The PySide6 **views** themselves remain untested (no offscreen-Qt harness yet).
 - No formal schema migration strategy — new columns are added with try/except `ALTER TABLE`; dropping or renaming columns still requires manual intervention.
 - Multi-user support is not implemented; both users share the same SQLite file at `~/.local/share/financeguru/finance.db`.
-- Stock price and analyst data fetching depends on yfinance / Yahoo Finance availability. Whole-fetch and per-ticker failures are now surfaced to the user (fetch details go to stderr), but there is no automatic retry or rate-limit backoff.
+- Stock price and analyst data fetching depends on yfinance / Yahoo Finance availability. Whole-fetch and per-ticker failures are surfaced to the user (fetch details go to stderr). yfinance 1.3.0 provides retry/backoff and 429 handling itself; no custom layer added.
 - **Residual security tech debt (intentionally deferred):**
-  - Daemon threads in `prices.py` can leak if the QThread is torn down while a blocking yfinance call is in flight. Fix requires injecting a `requests.Session` with native socket timeouts into yfinance.
   - `pyproject.toml` version ranges are fine under Nix (locked by `flake.lock`) but permissive enough to allow a breaking minor update for `pip install` users.
   - `yfinance` is an unofficial Yahoo Finance scraper — no SLA, no audit trail, can break on Yahoo API changes. Largest residual supply-chain exposure.
+  - _(Resolved 2026-06-15 pm)_ The `prices.py` daemon-thread leak is fixed — the daemon-thread wrapper was removed and the per-request socket timeout is now capped via the injected curl_cffi session.
 - The Debt Snowball simulator assumes all debts start at the current balance with no partial-month handling.
 
 ## Next Steps
 
-1. (Residual security) Fix leaked daemon threads in `prices.py` by injecting a `requests.Session` with native socket timeouts into yfinance calls.
-2. Add structured retry / rate-limit backoff for yfinance fetches (per-ticker failures are surfaced now, but not retried automatically).
-3. Consider a reporting/charts tab: spending over time, net worth trend using salary + debt + bill + goals data.
-4. (Optional) Add an offscreen-Qt test harness so the views can be smoke-tested.
+1. Build a reporting/charts tab: spending over time, net worth trend using salary + debt + bill + goals data.
+2. (Optional) Add an offscreen-Qt test harness so the views can be smoke-tested.
+3. Re-evaluate whether any custom retry / rate-limit backoff is still worth adding given yfinance 1.3.0 already handles it.
+
+_Done 2026-06-15 (pm): leaked daemon threads in `prices.py` eliminated (commit `96bb9c9`)._
