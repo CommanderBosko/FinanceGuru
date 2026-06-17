@@ -4,15 +4,15 @@ A personal finance desktop application for two users (bosko and natty). Tracks r
 
 ## Current Status
 
-Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 91-test pytest suite covers the repositories, models, and the `db`/`snowball`/`budget`/`prices`/`reporting` modules.
+Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 100-test pytest suite covers the repositories, models, and the `db`/`snowball`/`budget`/`prices`/`reporting` modules — including the price/tip fetcher QThreads. Three audit passes (two security 2026-06-07, one full 2026-06-17) have been completed with all findings addressed.
 
 ## Features
 
-- **Dashboard** — Bills due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Auto-refreshes on tab focus.
-- **Bills** — Full CRUD for recurring bills (name, amount, due day, frequency, category). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
+- **Dashboard** — Bills actually due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Monthly bills appear every month, yearly bills only in their due month, and one-time bills only in their exact month and year. Auto-refreshes on tab focus.
+- **Bills** — Full CRUD for recurring bills (name, amount, due day, recurrence, category). Recurrence is schedule-aware: `monthly` bills recur every month, `yearly` bills carry a due month, and `one-time` bills carry a full due month + year (the dialog reveals the right pickers per recurrence). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
 - **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A "This month only" checkbox (on by default) filters the list to the current calendar month; uncheck to see the full history. A live search bar filters by bill name, amount, date, or notes.
 - **Expenses** — Log one-off, non-recurring expenses (amount, date, category, notes) with full Add/Edit/Delete CRUD, double-click to edit, and a right-click context menu. Every expense carries a category from a fixed list (Housing, Utilities, Food, Transport, Health, Entertainment, Savings, Other).
-- **Charts** — Visualizes spending over the trailing 12 months. A stacked bar chart breaks each month's spending into categories; a pie chart shows a single month's breakdown (defaults to the current month, with a picker for any of the last 12). Spending = all payments + all expenses; goal contributions are counted as "Savings" and excluded from the monthly spending total. Auto-refreshes on tab focus.
+- **Charts** — Visualizes spending over the trailing 12 months. A stacked bar chart breaks each month's spending into categories; a pie chart shows a single month's breakdown (defaults to the current month, with a picker for any of the last 12). Spending = all payments + all expenses; goal contributions (payments against a goal-linked bill, identified by the goals foreign key) are counted as "Savings" and excluded from the monthly spending total. Auto-refreshes on tab focus.
 - **Stocks** — Portfolio holdings with ticker, shares, purchase price, date, total cost basis, and live market price / market value / gain-loss fetched via yfinance. Green/red gain-loss colouring. Refresh Prices button triggers a background QThread fetch.
 - **Stock Tips** — Track personal tips (ticker, action, target price, confidence, notes). Refresh Analyst Data fetches yfinance analyst consensus and mean price target, caching them in the DB without overwriting user-entered values.
 - **Debt Snowball** — Track debts (balance, APR, minimum payment). A pure-Python month-by-month simulator computes both Snowball and Avalanche payoff strategies with rolling extra payments. Side-by-side summary shows total interest paid and time saved per strategy. A per-debt monthly payment schedule table shows exactly how each month's payment is allocated. One-time lump-sum extra payments (windfalls, bonuses, tax refunds) can be injected at a specific month and cascade across debts.
@@ -131,6 +131,13 @@ share/
 
 ## Recent Changes
 
+**2026-06-17 — Audit Pass #3, Per-Month Bill Scheduling, Tooling Skills**
+
+- **Audit + fixes**: hardened QThread teardown on exit (views nested in a `QTabWidget` never receive `closeEvent`, so the fetcher cleanup was dead code and could abort the app on quit mid-fetch). `MainWindow.closeEvent` now drives a `stop_threads()` hook, dialogs clean up in `done()`, and a cancellable `_TickerFetcher`/`stop_fetcher` cancels then waits (bounded, with an unbounded fallback). Scoped the dashboard to bills genuinely due this month, and made goal→Savings categorization key off the `goals.bill_id` foreign key instead of the `notes='Goal'` string (collision fix).
+- **Per-month bill scheduling**: added nullable `due_month` (yearly) and `due_year` (one-time) columns plus `Bill.is_due_in()`, so yearly and one-time bills appear on the dashboard in their actual month instead of being dropped or counted every month.
+- **Tooling**: two project-local skills under `.claude/skills/` — `qt-smoke` (headless offscreen-Qt verification of views/dialogs) and `audit` (comprehensive review orchestrating security + correctness + the project risk checklist + tests).
+- Suite 91 → 100 tests (added fetcher QThread signal/cancel/stop coverage), all green.
+
 **2026-06-16 — Expense Tracking Layer + Spending Charts Tab**
 
 - Added two new tabs (8 → 10): **Expenses** (one-off expense CRUD with categories) and **Charts** (a stacked by-category bar chart of spending over the trailing 12 months plus a per-month breakdown pie, built on QtCharts).
@@ -167,7 +174,7 @@ _Earlier session entries are recorded in [session-summary-archive.md](session-su
 
 - **Net-worth trend** — The deferred half of the charts work: a net-worth-over-time view from salary, debt, stock, and goals data. (Spending-over-time shipped 2026-06-16.)
 - **Charts polish** — GUI eyeball of the new tabs (legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
-- **View tests** — Add an offscreen-Qt harness so the PySide6 views can be smoke-tested (the non-UI modules are covered).
+- **View tests** — The `qt-smoke` skill now provides a repeatable offscreen-Qt harness for ad-hoc view/dialog verification; automated pytest coverage of the PySide6 views themselves is still a possible follow-up (the non-UI modules and the fetcher QThreads are covered).
 - **Category management** — Editable categories (add/edit/delete) beyond the fixed v1 list.
 - **yfinance robustness** — Native socket timeouts are now in place (daemon-thread leak resolved). yfinance 1.3.0 also provides retry/backoff and 429 handling itself, so any *custom* retry layer is likely redundant — re-evaluate before building.
 - **Multi-user support** — App is used by two people (bosko, natty); per-user data partitioning is not yet implemented.

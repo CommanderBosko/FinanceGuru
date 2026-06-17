@@ -4,6 +4,56 @@ _Active log: [session-summary.md](session-summary.md). Older entries are appende
 
 ---
 
+## Session: 2026-06-07 (Night) — File Menu: Backup, Restore, and Export to CSV
+
+**Duration Estimate**: Single focused session
+**Session Focus**: Add a File menu to the main window giving users portable, WAL-safe tools to back up, restore, and export their financial data without touching the file system manually.
+
+### What Was Accomplished
+
+- Added three helpers to `db.py`:
+  - `backup_database(dest)` — uses SQLite's online backup API so the copy is transactionally consistent even when a WAL sidecar holds uncommitted pages. Sets `chmod 600` on the output file.
+  - `restore_database(src)` — validates the source file is a real SQLite database (executes a probe query before overwriting), then replaces `finance.db` and removes any stale `-wal`/`-shm`/`-journal` sidecars that would otherwise corrupt the freshly restored file. Sets `chmod 600` on the restored file.
+  - `export_all_csv(dest_dir)` — queries `sqlite_master` to enumerate all user tables (excluding internal `sqlite_*` entries), exports each to one `<table>.csv` file in the chosen directory, returns the list of written paths. Added `import csv` and `import shutil`.
+- Added a `_build_menus()` method to `MainWindow` that creates a `&File` menu with:
+  - **Backup Database...** — opens a Save File dialog defaulting to `~/financeguru-backup-YYYYMMDD.db`; calls `db.backup_database`; shows success or error dialog.
+  - **Restore Database...** — warns the user with a Yes/Cancel confirmation before proceeding; opens an Open File dialog; calls `db.restore_database`; calls `_refresh_all()` to reload all open tabs; shows success or error dialog.
+  - **Export to CSV...** — opens a directory picker; calls `db.export_all_csv`; reports the count and names of files written.
+  - **Quit** — bound to `QKeySequence.StandardKey.Quit` (Ctrl+Q on Linux).
+- Added `_refresh_all()` to `MainWindow` — iterates all tab widgets and calls `refresh()` on any that implement it. Used after a database restore to guarantee the UI reflects the newly loaded data.
+- Added imports to `main_window.py`: `datetime`, `QAction`, `QKeySequence`, `QFileDialog`, `QMessageBox`, and the `db` module.
+- Both files compile cleanly; feature confirmed working by the user.
+
+### Files Changed
+
+- `src/financeguru/db.py` — Added `backup_database`, `restore_database`, `export_all_csv`; added `import csv` and `import shutil`
+- `src/financeguru/views/main_window.py` — Added `_build_menus()`, `_backup_database()`, `_restore_database()`, `_export_csv()`, `_refresh_all()`; added `datetime`, `QAction`, `QKeySequence`, `QFileDialog`, `QMessageBox`, `db` imports
+
+### Commits This Session
+
+- `cfc597b` — feat(db,ui): add File menu with Backup, Restore, and Export to CSV
+
+### Decisions Made
+
+- **SQLite online backup API instead of `shutil.copy`** — The online API snapshots the database transactionally, merging any pending WAL pages into the destination copy; a raw file copy would capture only the main file and miss WAL data, producing a potentially inconsistent backup.
+- **Probe-before-overwrite in `restore_database`** — Executing `SELECT count(*) FROM sqlite_master` on the candidate file confirms it is a valid SQLite database before the live `finance.db` is touched. Prevents corrupting the live database with a non-DB file chosen by mistake.
+- **Sidecar cleanup on restore** — After copying, any `-wal`/`-shm`/`-journal` files left from the previous session are removed. Without this step, SQLite would apply the old WAL on top of the restored data and corrupt it.
+- **`_refresh_all()` iterates by duck-typing** — Rather than maintaining a registry of views, the helper calls `refresh()` on any tab widget that has the method. This is consistent with how the app already handles tab refreshes elsewhere and requires no changes when future tabs are added.
+- **Backup filename default includes date** — `financeguru-backup-YYYYMMDD.db` gives users a sensible default without forcing them to type a name; they can override it freely in the dialog.
+
+### Issues Encountered
+
+- None. Both files compiled cleanly and the feature was confirmed working.
+
+### Remaining / Next Session
+
+- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input and add to a host's `environment.systemPackages` (top priority).
+- Write pytest tests for the repository layer (`bills`, `payments`, `stocks`, `debts`, `incomes`, `stock_tips`, `goals`) using an in-memory SQLite database.
+- Add user-visible error feedback when yfinance price or analyst data fetch fails (network error, rate limit).
+- Consider a reporting/charts tab using the salary, debt, bill, and goals data now available.
+
+---
+
 ## Session: 2026-06-07 (Evening) — Goals Budgeting Tab
 
 **Duration Estimate**: Single focused session
