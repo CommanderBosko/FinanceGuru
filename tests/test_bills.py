@@ -54,6 +54,25 @@ def test_delete_removes_bill():
     assert bills.get_all() == []
 
 
+def test_due_month_round_trips_and_defaults_to_none():
+    # Monthly bills carry no due_month.
+    monthly_id = bills.add(_sample())
+    monthly = next(b for b in bills.get_all() if b.id == monthly_id)
+    assert monthly.due_month is None
+
+    # A yearly bill stores its month, and it survives an update.
+    yearly = Bill(name="Car Insurance", amount=Decimal("900.00"), due_day=15,
+                  due_month=3, recurrence="yearly")
+    yearly_id = bills.add(yearly)
+    loaded = next(b for b in bills.get_all() if b.id == yearly_id)
+    assert loaded.due_month == 3
+
+    loaded.due_month = 11
+    bills.update(loaded)
+    reloaded = next(b for b in bills.get_all() if b.id == yearly_id)
+    assert reloaded.due_month == 11
+
+
 def test_category_round_trips_and_defaults_to_other():
     # Explicit category survives add/get_all.
     with_cat = Bill(name="Internet", amount=Decimal("60.00"), due_day=10,

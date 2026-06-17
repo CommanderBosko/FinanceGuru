@@ -81,6 +81,7 @@ def init_db() -> None:
                 name        TEXT    NOT NULL,
                 amount      REAL    NOT NULL,
                 due_day     INTEGER NOT NULL,
+                due_month   INTEGER,
                 recurrence  TEXT    NOT NULL DEFAULT 'monthly',
                 is_active   INTEGER NOT NULL DEFAULT 1,
                 notes       TEXT,
@@ -157,6 +158,7 @@ def init_db() -> None:
         # Migrations for databases created before a column existed.
         _ensure_column(conn, "incomes", "pay_days", "pay_days TEXT")
         _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
+        _ensure_column(conn, "bills", "due_month", "due_month INTEGER")
 
 
 def backup_database(dest: Path) -> None:

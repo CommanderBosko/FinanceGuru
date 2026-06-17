@@ -55,13 +55,15 @@ class DashboardView(QWidget):
     def refresh(self) -> None:
         today = date.today()
         paid_ids = payment_repo.get_paid_bill_ids_for_month(today.year, today.month)
-        # Only monthly bills are genuinely due every month on their due_day.
-        # Yearly and one-time bills carry no month in the data model, so listing
-        # them here — with a due day and full amount — would overstate this
-        # month's total and misrepresent their due date.
+        # Monthly bills are due every month; yearly bills only in their
+        # due_month. One-time bills carry no recurring month, so they're left
+        # out rather than overstating this month's total.
         bills = [
             b for b in bill_repo.get_all()
-            if b.is_active and b.recurrence == "monthly"
+            if b.is_active and (
+                b.recurrence == "monthly"
+                or (b.recurrence == "yearly" and b.due_month == today.month)
+            )
         ]
 
         self._month_label.setText(today.strftime("%B %Y"))
