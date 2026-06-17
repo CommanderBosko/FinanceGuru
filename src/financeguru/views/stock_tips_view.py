@@ -170,6 +170,11 @@ class StockTipsView(QWidget):
         tickers = list({t.ticker for t in self._tips})
         self._btn_refresh.setEnabled(False)
         self._btn_refresh.setText("Fetching…")
+        # The previous fetcher (guaranteed finished — the button is re-enabled
+        # only on finish) stays parented to this view; free it so repeated
+        # refreshes don't pile up dead QThread children.
+        if self._fetcher is not None:
+            self._fetcher.deleteLater()
         self._fetcher = TipFetcher(tickers, self)
         self._fetcher.tips_ready.connect(self._on_tips_ready)
         self._fetcher.fetch_error.connect(self._on_fetch_error)

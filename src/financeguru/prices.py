@@ -231,7 +231,14 @@ def stop_fetcher(fetcher: _TickerFetcher | None) -> None:
 
     Safe to call with ``None`` or an already-finished fetcher. Call from
     window/dialog teardown so a QThread is never destroyed while still running.
+
+    cancel() only takes effect between tickers, and a single ticker can issue
+    several socket-capped requests (TipFetcher fetches two fields), so the
+    bounded wait can be outrun. If it is, fall back to an unbounded wait — the
+    per-request socket cap and finite ticker list keep that from hanging — so
+    the no-crash guarantee holds even in the worst case.
     """
     if fetcher is not None and fetcher.isRunning():
         fetcher.cancel()
-        fetcher.wait(_STOP_WAIT_MS)
+        if not fetcher.wait(_STOP_WAIT_MS):
+            fetcher.wait()

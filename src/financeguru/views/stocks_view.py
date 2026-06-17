@@ -179,6 +179,11 @@ class StocksView(QWidget):
         tickers = list({s.ticker for s in self._stocks})
         self._btn_refresh.setEnabled(False)
         self._btn_refresh.setText("Fetching…")
+        # The previous fetcher (guaranteed finished — the button is re-enabled
+        # only on finish) stays parented to this view; free it so repeated
+        # refreshes don't pile up dead QThread children.
+        if self._fetcher is not None:
+            self._fetcher.deleteLater()
         fetcher = PriceFetcher(tickers, self)
         self._fetcher = fetcher
         fetcher.prices_ready.connect(self._on_prices_ready)

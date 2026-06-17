@@ -21,18 +21,24 @@ from financeguru.db import get_connection
 from financeguru.money import to_decimal
 
 
-def _categorized_rows(conn, year: int, month: int) -> list[tuple[str, Decimal]]:
-    """Return (category, amount) for every payment and expense in one month."""
-    prefix = f"{year}-{month:02d}-%"
-    rows: list[tuple[str, Decimal]] = []
+def _goal_bill_ids(conn) -> set[int]:
+    """Bill ids that a goal links to via goals.bill_id.
 
-    # Goal contributions are payments against an auto-created bill that a goal
-    # links to via goals.bill_id. Identify them by that foreign key — not by note
-    # text or category — so a user's own bill can never collide into Savings.
-    goal_bill_ids = {
+    Goal contributions are payments against these auto-created bills. Identifying
+    them by this foreign key — not by note text or category — means a user's own
+    bill can never collide into Savings. Computed once per report rather than per
+    month so the lookup doesn't repeat across the window.
+    """
+    return {
         r["bill_id"]
         for r in conn.execute("SELECT bill_id FROM goals WHERE bill_id IS NOT NULL")
     }
+
+
+def _categorized_rows(conn, year: int, month: int, goal_bill_ids: set[int]) -> list[tuple[str, Decimal]]:
+    """Return (category, amount) for every payment and expense in one month."""
+    prefix = f"{year}-{month:02d}-%"
+    rows: list[tuple[str, Decimal]] = []
 
     # Payments inherit their bill's category. A payment with no bill falls back to
     # the default; a payment against a goal-linked bill is treated as savings.
@@ -96,10 +102,11 @@ def monthly_spending(window: int = 12) -> list[dict]:
     """
     result: list[dict] = []
     with get_connection() as conn:
+        goal_bill_ids = _goal_bill_ids(conn)
         for year, month in _months_ending_now(window):
             by_category: dict[str, Decimal] = {}
             total = Decimal("0")
-            for category, amount in _categorized_rows(conn, year, month):
+            for category, amount in _categorized_rows(conn, year, month, goal_bill_ids):
                 by_category[category] = by_category.get(category, Decimal("0")) + amount
                 if category != SAVINGS_CATEGORY:
                     total += amount
@@ -119,7 +126,8 @@ def category_breakdown(year: int, month: int) -> dict[str, float]:
     Categories with no spending are omitted; an empty month returns ``{}``.
     """
     with get_connection() as conn:
+        goal_bill_ids = _goal_bill_ids(conn)
         totals: dict[str, Decimal] = {}
-        for category, amount in _categorized_rows(conn, year, month):
+        for category, amount in _categorized_rows(conn, year, month, goal_bill_ids):
             totals[category] = totals.get(category, Decimal("0")) + amount
     return {k: float(v) for k, v in totals.items()}
