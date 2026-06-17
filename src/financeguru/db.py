@@ -82,6 +82,7 @@ def init_db() -> None:
                 amount      REAL    NOT NULL,
                 due_day     INTEGER NOT NULL,
                 due_month   INTEGER,
+                due_year    INTEGER,
                 recurrence  TEXT    NOT NULL DEFAULT 'monthly',
                 is_active   INTEGER NOT NULL DEFAULT 1,
                 notes       TEXT,
@@ -159,6 +160,7 @@ def init_db() -> None:
         _ensure_column(conn, "incomes", "pay_days", "pay_days TEXT")
         _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
         _ensure_column(conn, "bills", "due_month", "due_month INTEGER")
+        _ensure_column(conn, "bills", "due_year", "due_year INTEGER")
 
 
 def backup_database(dest: Path) -> None:

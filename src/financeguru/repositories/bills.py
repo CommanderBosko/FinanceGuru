@@ -12,10 +12,11 @@ def get_all() -> list[Bill]:
 def add(bill: Bill) -> int | None:
     with get_connection() as conn:
         cur = conn.execute(
-            "INSERT INTO bills (name, amount, due_day, due_month, recurrence, is_active, notes, category)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (bill.name, bill.amount, bill.due_day, bill.due_month, bill.recurrence,
-             int(bill.is_active), bill.notes, bill.category),
+            "INSERT INTO bills"
+            " (name, amount, due_day, due_month, due_year, recurrence, is_active, notes, category)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (bill.name, bill.amount, bill.due_day, bill.due_month, bill.due_year,
+             bill.recurrence, int(bill.is_active), bill.notes, bill.category),
         )
         return cur.lastrowid
 
@@ -23,10 +24,10 @@ def add(bill: Bill) -> int | None:
 def update(bill: Bill) -> None:
     with get_connection() as conn:
         conn.execute(
-            "UPDATE bills SET name=?, amount=?, due_day=?, due_month=?, recurrence=?, is_active=?,"
-            " notes=?, category=? WHERE id=?",
-            (bill.name, bill.amount, bill.due_day, bill.due_month, bill.recurrence,
-             int(bill.is_active), bill.notes, bill.category, bill.id),
+            "UPDATE bills SET name=?, amount=?, due_day=?, due_month=?, due_year=?, recurrence=?,"
+            " is_active=?, notes=?, category=? WHERE id=?",
+            (bill.name, bill.amount, bill.due_day, bill.due_month, bill.due_year,
+             bill.recurrence, int(bill.is_active), bill.notes, bill.category, bill.id),
         )
 
 
@@ -46,6 +47,7 @@ def _row_to_bill(row) -> Bill:
         amount=to_decimal(row["amount"]),
         due_day=row["due_day"],
         due_month=row["due_month"],
+        due_year=row["due_year"],
         recurrence=row["recurrence"],
         is_active=bool(row["is_active"]),
         notes=row["notes"],

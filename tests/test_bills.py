@@ -73,6 +73,37 @@ def test_due_month_round_trips_and_defaults_to_none():
     assert reloaded.due_month == 11
 
 
+def test_one_time_due_year_round_trips():
+    once = Bill(name="Roof Repair", amount=Decimal("4000.00"), due_day=20,
+                due_month=9, due_year=2026, recurrence="one-time")
+    once_id = bills.add(once)
+    loaded = next(b for b in bills.get_all() if b.id == once_id)
+    assert (loaded.due_month, loaded.due_year, loaded.recurrence) == (9, 2026, "one-time")
+
+    # Monthly/yearly bills leave due_year NULL.
+    monthly_id = bills.add(_sample())
+    monthly = next(b for b in bills.get_all() if b.id == monthly_id)
+    assert monthly.due_year is None
+
+
+def test_is_due_in_by_recurrence():
+    monthly = Bill(name="Rent", amount=Decimal("1"), due_day=1)
+    assert monthly.is_due_in(2026, 6) is True
+    assert monthly.is_due_in(2027, 1) is True
+
+    yearly = Bill(name="Insurance", amount=Decimal("1"), due_day=1,
+                  due_month=3, recurrence="yearly")
+    assert yearly.is_due_in(2026, 3) is True
+    assert yearly.is_due_in(2099, 3) is True   # any year, matching month
+    assert yearly.is_due_in(2026, 4) is False
+
+    once = Bill(name="Roof", amount=Decimal("1"), due_day=1,
+                due_month=9, due_year=2026, recurrence="one-time")
+    assert once.is_due_in(2026, 9) is True
+    assert once.is_due_in(2027, 9) is False    # right month, wrong year
+    assert once.is_due_in(2026, 8) is False
+
+
 def test_category_round_trips_and_defaults_to_other():
     # Explicit category survives add/get_all.
     with_cat = Bill(name="Internet", amount=Decimal("60.00"), due_day=10,

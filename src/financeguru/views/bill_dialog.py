@@ -50,6 +50,13 @@ class BillDialog(QDialog):
         else:
             self._due_month.setCurrentIndex(date.today().month - 1)
         form.addRow("Due Month", self._due_month)
+
+        # Only one-time bills are pinned to a specific year; hidden otherwise.
+        self._due_year = QSpinBox()
+        self._due_year.setRange(2000, 2100)
+        self._due_year.setValue(bill.due_year if bill and bill.due_year else date.today().year)
+        form.addRow("Due Year", self._due_year)
+
         self._recurrence.currentTextChanged.connect(self._on_recurrence_changed)
 
         self._category = QComboBox()
@@ -75,16 +82,20 @@ class BillDialog(QDialog):
         self._on_recurrence_changed(self._recurrence.currentText())
 
     def _on_recurrence_changed(self, recurrence: str) -> None:
-        self._form.setRowVisible(self._due_month, recurrence == "yearly")
+        # Yearly bills need a month; one-time bills need a month and a year.
+        self._form.setRowVisible(self._due_month, recurrence in ("yearly", "one-time"))
+        self._form.setRowVisible(self._due_year, recurrence == "one-time")
 
     def bill(self) -> Bill:
         recurrence = self._recurrence.currentText()
+        needs_month = recurrence in ("yearly", "one-time")
         return Bill(
             id=self._bill_id,
             name=self._name.text().strip(),
             amount=cents(self._amount.value()),
             due_day=self._due_day.value(),
-            due_month=self._due_month.currentData() if recurrence == "yearly" else None,
+            due_month=self._due_month.currentData() if needs_month else None,
+            due_year=self._due_year.value() if recurrence == "one-time" else None,
             recurrence=recurrence,
             category=self._category.currentText(),
             notes=self._notes.toPlainText().strip() or None,
