@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 
 from financeguru.models.stock import Stock
 from financeguru.money import ZERO, to_decimal
-from financeguru.prices import PriceFetcher
+from financeguru.prices import PriceFetcher, stop_fetcher
 from financeguru.repositories import stocks as stock_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_dialog import StockDialog
@@ -191,11 +191,11 @@ class StocksView(QWidget):
         self._btn_refresh.setEnabled(True)
         self._btn_refresh.setText("Refresh Prices")
 
-    def closeEvent(self, event) -> None:
-        if self._fetcher is not None and self._fetcher.isRunning():
-            self._fetcher.quit()
-            self._fetcher.wait(2000)
-        super().closeEvent(event)
+    def stop_threads(self) -> None:
+        # Called by MainWindow.closeEvent on quit. This view is nested in a
+        # QTabWidget and never receives its own close event, so cleanup can't
+        # live in closeEvent — the parent window drives it.
+        stop_fetcher(self._fetcher)
 
     def _on_prices_ready(self, prices: dict) -> None:
         self._prices = prices

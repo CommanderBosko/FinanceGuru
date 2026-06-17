@@ -4,8 +4,9 @@ from decimal import Decimal
 from financeguru import reporting
 from financeguru.models.bill import Bill
 from financeguru.models.expense import Expense
+from financeguru.models.goal import Goal
 from financeguru.models.payment import Payment
-from financeguru.repositories import bills, expenses, payments
+from financeguru.repositories import bills, expenses, goals, payments
 
 
 def _this_month_date(day: int = 15) -> str:
@@ -22,13 +23,24 @@ def test_payment_inherits_bill_category():
     assert reporting.category_breakdown(2026, 6) == {"Housing": 1200.0}
 
 
-def test_goal_payment_is_savings_not_bill_category():
-    # The Goal bill carries the default category, but its payments must land in
-    # Savings because of the GOAL_NOTE tag, not under "Other".
-    gid = bills.add(Bill(name="Vacation", amount=Decimal("100"), due_day=1,
-                         notes="Goal", category="Other"))
-    payments.add(Payment(amount=Decimal("100"), paid_date="2026-06-10", bill_id=gid))
+def test_goal_payment_is_savings_via_goals_fk():
+    # Payments against a goal-linked bill land in Savings because of the goals
+    # foreign key — even if the bill's own category says otherwise.
+    bid = bills.add(Bill(name="Vacation", amount=Decimal("100"), due_day=1,
+                         category="Other"))
+    goals.add(Goal(name="Vacation", price=Decimal("100"),
+                   target_date="2026-12-31", bill_id=bid))
+    payments.add(Payment(amount=Decimal("100"), paid_date="2026-06-10", bill_id=bid))
     assert reporting.category_breakdown(2026, 6) == {"Savings": 100.0}
+
+
+def test_unlinked_bill_noted_goal_is_not_savings():
+    # A user's own bill whose note happens to be "Goal" must NOT be treated as a
+    # goal contribution — only the goals FK does that. It keeps its category.
+    bid = bills.add(Bill(name="Gym", amount=Decimal("30"), due_day=1,
+                         notes="Goal", category="Health"))
+    payments.add(Payment(amount=Decimal("30"), paid_date="2026-06-10", bill_id=bid))
+    assert reporting.category_breakdown(2026, 6) == {"Health": 30.0}
 
 
 def test_payment_without_bill_is_other():
@@ -87,7 +99,9 @@ def test_monthly_spending_returns_window_entries_oldest_first():
 
 def test_monthly_spending_excludes_savings_from_total():
     gid = bills.add(Bill(name="Goal", amount=Decimal("0"), due_day=1,
-                         notes="Goal", category="Other"))
+                         category="Savings"))
+    goals.add(Goal(name="Goal", price=Decimal("500"),
+                   target_date="2026-12-31", bill_id=gid))
     payments.add(Payment(amount=Decimal("500"), paid_date=_this_month_date(),
                          bill_id=gid))
     expenses.add(Expense(amount=Decimal("80"), spent_date=_this_month_date(),

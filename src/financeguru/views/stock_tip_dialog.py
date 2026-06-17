@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 
 from financeguru.models.stock_tip import StockTip
 from financeguru.money import cents
-from financeguru.prices import TipFetcher
+from financeguru.prices import TipFetcher, stop_fetcher
 from financeguru.validators import normalize_ticker
 
 _ACTIONS = ["Watch", "Buy", "Strong Buy", "Hold", "Sell", "Strong Sell"]
@@ -105,6 +105,13 @@ class StockTipDialog(QDialog):
         if info.get("count"):
             parts.append(f"{info['count']} analysts")
         self._fetch_status.setText(", ".join(parts) if parts else "No analyst data found.")
+
+    def done(self, result: int) -> None:
+        # OK, Cancel, Esc, and the window-close button all funnel through done();
+        # stop any in-flight analyst fetch so its QThread isn't destroyed while
+        # still running when the dialog is torn down.
+        stop_fetcher(self._fetcher)
+        super().done(result)
 
     def _on_fetch_error(self, message: str) -> None:
         self._fetch_btn.setEnabled(True)

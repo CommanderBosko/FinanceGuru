@@ -143,3 +143,14 @@ class MainWindow(QMainWindow):
         widget = self._tabs.widget(index)
         if hasattr(widget, "refresh"):
             widget.refresh()
+
+    def closeEvent(self, event) -> None:
+        # Child widgets in a QTabWidget never receive their own close event, so
+        # stop any in-flight fetch threads here — before the window (and the
+        # QThreads parented to its views) are torn down — to avoid "QThread
+        # destroyed while still running" aborting the process on quit.
+        for i in range(self._tabs.count()):
+            widget = self._tabs.widget(i)
+            if hasattr(widget, "stop_threads"):
+                widget.stop_threads()
+        super().closeEvent(event)

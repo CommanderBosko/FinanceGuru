@@ -19,6 +19,10 @@ _FETCH_ERROR_MSG = "Could not fetch market data. Check your connection and try a
 # pinning the worker thread until the process exits.
 _REQUEST_TIMEOUT_S = 8.0
 
+# How long to wait for a cancelled fetcher to unwind before giving up: one
+# in-flight request, bounded by the socket cap above, plus a little headroom.
+_STOP_WAIT_MS = int(_REQUEST_TIMEOUT_S * 1000) + 1000
+
 
 def _make_session():
     """A curl_cffi session preserving yfinance's Chrome impersonation while
@@ -63,14 +67,28 @@ def _safe_call(fn: Callable[[], _T]) -> tuple[bool, _T | None]:
         return False, None
 
 
-class PriceFetcher(QThread):
-    prices_ready = Signal(dict)   # {ticker: float | None}
-    fetch_error = Signal(str)
-    partial_error = Signal(list)  # [ticker, ...] that timed out or errored
+class _TickerFetcher(QThread):
+    """A QThread that fetches per-ticker data and can be cancelled on teardown.
+
+    ``cancel()`` sets a flag the run loop checks between tickers, so quitting the
+    app or closing a dialog mid-fetch unwinds promptly — the worst-case wait is
+    one in-flight request, bounded by the socket cap — instead of the thread
+    being destroyed while still running (which aborts the process).
+    """
 
     def __init__(self, tickers: list[str], parent=None):
         super().__init__(parent)
         self._tickers = tickers
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+
+class PriceFetcher(_TickerFetcher):
+    prices_ready = Signal(dict)   # {ticker: float | None}
+    fetch_error = Signal(str)
+    partial_error = Signal(list)  # [ticker, ...] that timed out or errored
 
     def run(self) -> None:
         try:
@@ -79,16 +97,22 @@ class PriceFetcher(QThread):
             prices: dict[str, float | None] = {}
             failed: list[str] = []
             for ticker in self._tickers:
+                if self._cancelled:
+                    return
                 ok, value = _safe_call(
                     lambda t=ticker: self._fetch_price(yf, t, session)
                 )
                 prices[ticker] = value if ok else None
                 if not ok:
                     failed.append(ticker)
+            if self._cancelled:
+                return
             self.prices_ready.emit(prices)
             if failed:
                 self.partial_error.emit(failed)
         except Exception:
+            if self._cancelled:
+                return
             traceback.print_exc(file=sys.stderr)
             self.fetch_error.emit(_FETCH_ERROR_MSG)
 
@@ -105,14 +129,10 @@ class PriceFetcher(QThread):
 TipData = dict[str, dict]
 
 
-class TipFetcher(QThread):
+class TipFetcher(_TickerFetcher):
     tips_ready = Signal(dict)
     fetch_error = Signal(str)
     partial_error = Signal(list)  # [ticker, ...] that timed out or errored
-
-    def __init__(self, tickers: list[str], parent=None):
-        super().__init__(parent)
-        self._tickers = tickers
 
     def run(self) -> None:
         try:
@@ -121,6 +141,8 @@ class TipFetcher(QThread):
             result: TipData = {}
             failed: list[str] = []
             for ticker in self._tickers:
+                if self._cancelled:
+                    return
                 ok, value = _safe_call(
                     lambda t=ticker: self._fetch_one(yf.Ticker(t, session=session))
                 )
@@ -131,10 +153,14 @@ class TipFetcher(QThread):
                 result[ticker] = data or {"action": None, "target": None, "count": None}
                 if fetch_failed:
                     failed.append(ticker)
+            if self._cancelled:
+                return
             self.tips_ready.emit(result)
             if failed:
                 self.partial_error.emit(failed)
         except Exception:
+            if self._cancelled:
+                return
             traceback.print_exc(file=sys.stderr)
             self.fetch_error.emit(_FETCH_ERROR_MSG)
 
@@ -198,3 +224,14 @@ class TipFetcher(QThread):
             traceback.print_exc(file=sys.stderr)
             failed = True
         return failed, {"action": action, "target": target, "count": count}
+
+
+def stop_fetcher(fetcher: _TickerFetcher | None) -> None:
+    """Cancel an in-flight fetcher and block until its run loop unwinds.
+
+    Safe to call with ``None`` or an already-finished fetcher. Call from
+    window/dialog teardown so a QThread is never destroyed while still running.
+    """
+    if fetcher is not None and fetcher.isRunning():
+        fetcher.cancel()
+        fetcher.wait(_STOP_WAIT_MS)

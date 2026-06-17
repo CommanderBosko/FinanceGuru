@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from financeguru.categories import GOAL_NOTE
+from financeguru.categories import GOAL_NOTE, SAVINGS_CATEGORY
 from financeguru.models.bill import Bill
 from financeguru.models.goal import Goal, months_remaining
 from financeguru.money import ZERO
@@ -115,6 +115,7 @@ class GoalsView(QWidget):
             recurrence="monthly",
             is_active=True,
             notes=GOAL_NOTE,
+            category=SAVINGS_CATEGORY,
         )
 
     def _on_add(self) -> None:

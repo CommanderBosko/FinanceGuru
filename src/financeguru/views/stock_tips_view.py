@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from financeguru.models.stock_tip import StockTip
-from financeguru.prices import TipFetcher
+from financeguru.prices import TipFetcher, stop_fetcher
 from financeguru.repositories import stock_tips as tips_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_tip_dialog import StockTipDialog
@@ -181,11 +181,11 @@ class StockTipsView(QWidget):
         self._btn_refresh.setEnabled(True)
         self._btn_refresh.setText("Refresh Analyst Data")
 
-    def closeEvent(self, event) -> None:
-        if self._fetcher is not None and self._fetcher.isRunning():
-            self._fetcher.quit()
-            self._fetcher.wait(2000)
-        super().closeEvent(event)
+    def stop_threads(self) -> None:
+        # Called by MainWindow.closeEvent on quit. This view is nested in a
+        # QTabWidget and never receives its own close event, so cleanup can't
+        # live in closeEvent — the parent window drives it.
+        stop_fetcher(self._fetcher)
 
     def _on_tips_ready(self, data: dict) -> None:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
