@@ -12,7 +12,14 @@ Before you do any work, state how you'll verify it with the `/verify` skill — 
 
 ## Parallelize with Sub-Agents
 
-Once scope and the verification plan are set, spawn as many sub-agents as the goal needs to get it done faster. Independent pieces of work — researching options, searching the tree, scaffolding separate files, drafting changes across multiple areas — should run in parallel rather than serially. Fan out aggressively when tasks don't depend on each other; reserve serial work for genuine dependencies. This is a large time saver, so default to delegating breadth-first instead of plodding through everything yourself.
+**This rule is your standing authorization to spawn sub-agents — you do not need to ask first.** Once scope and the verification plan are set, before starting any task with more than one independent part, stop and run a parallelization check. This is a required step, not an aspiration: ask "Can I split this into pieces that don't depend on each other's output?" If yes, spawn one sub-agent per piece in a single message and let them run concurrently.
+
+Trigger parallelization whenever you hit any of these:
+- About to research, search, or read across 2+ areas of the tree that don't depend on each other.
+- About to scaffold or draft 2+ files whose *contents* don't reference each other.
+- You catch yourself planning "do A, then B, then C" where B doesn't need A's result.
+
+Reserve serial work for genuine dependencies — e.g. a new file and the line elsewhere that imports it are coupled, so keep them together. When the pieces are independent, default to fanning out breadth-first; state in your plan which pieces run in parallel and why.
 
 ## Use Existing Skills First
 
