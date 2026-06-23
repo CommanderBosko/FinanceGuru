@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from financeguru.db import get_connection
 from financeguru.models.expense import Expense
 from financeguru.money import to_decimal
@@ -9,6 +11,18 @@ def get_all() -> list[Expense]:
             "SELECT * FROM expenses ORDER BY spent_date DESC"
         ).fetchall()
     return [_row_to_expense(r) for r in rows]
+
+
+def total_for_month(year: int, month: int) -> Decimal:
+    """Sum of expenses logged in the given calendar month (0 if none)."""
+    prefix = f"{year}-{month:02d}-%"
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses"
+            " WHERE spent_date LIKE ?",
+            (prefix,),
+        ).fetchone()
+    return to_decimal(row["total"])
 
 
 def add(expense: Expense) -> int | None:

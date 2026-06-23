@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -9,6 +12,7 @@ from PySide6.QtWidgets import (
 from financeguru.budget import SPECIFIC_DAYS, format_pay_days, monthly_bill, monthly_income
 from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
+from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import incomes as income_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
@@ -49,8 +53,9 @@ class SalaryView(QWidget):
         budget_layout = QHBoxLayout(budget_box)
         self._lbl_income = QLabel()
         self._lbl_bills = QLabel()
+        self._lbl_expenses = QLabel()
         self._lbl_extra = QLabel()
-        for lbl in (self._lbl_income, self._lbl_bills, self._lbl_extra):
+        for lbl in (self._lbl_income, self._lbl_bills, self._lbl_expenses, self._lbl_extra):
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             budget_layout.addWidget(lbl)
         big = QFont()
@@ -153,10 +158,15 @@ class SalaryView(QWidget):
     def _recompute(self) -> None:
         total_income = sum(monthly_income(i) for i in self._incomes)
         total_bills = sum(monthly_bill(b) for b in bill_repo.get_all())
-        extra = total_income - total_bills
+        # This month's logged one-off spending (Expenses tab), on top of the
+        # recurring bill obligations, so "extra" is what's actually left to save.
+        today = date.today()
+        total_expenses = expense_repo.total_for_month(today.year, today.month)
+        extra = total_income - total_bills - total_expenses
 
         self._lbl_income.setText(f"Monthly Income\n${total_income:,.2f}")
         self._lbl_bills.setText(f"Monthly Bills\n−${total_bills:,.2f}")
+        self._lbl_expenses.setText(f"This Month's Expenses\n−${total_expenses:,.2f}")
         extra_color = _GREEN if extra >= 0 else _RED
         label = "Extra Spending Money" if extra >= 0 else "Over Budget"
         self._lbl_extra.setText(f"{label}\n${extra:,.2f}")
@@ -164,7 +174,7 @@ class SalaryView(QWidget):
 
         self._update_savings(extra)
 
-    def _update_savings(self, extra: float) -> None:
+    def _update_savings(self, extra: Decimal) -> None:
         pct = self._slider.value()
 
         if extra <= 0:

@@ -43,3 +43,17 @@ def test_update_and_delete():
 
     expenses.delete(eid)
     assert expenses.get_all() == []
+
+
+def test_total_for_month_sums_only_that_month():
+    expenses.add(Expense(amount=Decimal("40.00"), spent_date="2026-06-03"))
+    expenses.add(Expense(amount=Decimal("12.50"), spent_date="2026-06-20"))
+    expenses.add(Expense(amount=Decimal("99.99"), spent_date="2026-05-31"))
+    expenses.add(Expense(amount=Decimal("1.00"), spent_date="2026-07-01"))
+    total = expenses.total_for_month(2026, 6)
+    assert total == Decimal("52.50")
+    assert isinstance(total, Decimal)
+
+
+def test_total_for_month_is_zero_when_no_expenses():
+    assert expenses.total_for_month(2026, 6) == Decimal("0")
