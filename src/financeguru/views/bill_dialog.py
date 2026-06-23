@@ -5,9 +5,9 @@ from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
     QLineEdit, QComboBox, QSpinBox, QTextEdit, QVBoxLayout,
 )
-from financeguru.categories import CATEGORIES
 from financeguru.models.bill import Bill
 from financeguru.money import cents
+from financeguru.repositories import categories as category_repo
 
 
 class BillDialog(QDialog):
@@ -60,8 +60,12 @@ class BillDialog(QDialog):
         self._recurrence.currentTextChanged.connect(self._on_recurrence_changed)
 
         self._category = QComboBox()
-        self._category.addItems(CATEGORIES)
+        self._category.addItems(category_repo.names())
         if bill:
+            # Preserve a category that was since deleted from the picker so
+            # editing the bill doesn't silently re-categorize it.
+            if self._category.findText(bill.category) < 0:
+                self._category.addItem(bill.category)
             self._category.setCurrentText(bill.category)
         form.addRow("Category", self._category)
 

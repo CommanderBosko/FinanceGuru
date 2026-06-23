@@ -7,6 +7,9 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
+from financeguru.categories import CATEGORIES, PROTECTED_CATEGORIES
+
+
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # The tables every FinanceGuru database must have. Used to reject a restore from
@@ -154,6 +157,17 @@ def init_db() -> None:
                 category    TEXT    NOT NULL DEFAULT 'Other',
                 notes       TEXT
             );
+
+            -- User-managed spending categories. Bills/expenses store their
+            -- category as free text (not a foreign key), so deleting a category
+            -- here only removes it from the pickers; existing rows keep their
+            -- value. Seeded from financeguru.categories.CATEGORIES below.
+            CREATE TABLE IF NOT EXISTS categories (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT    NOT NULL UNIQUE,
+                position     INTEGER NOT NULL DEFAULT 0,
+                is_protected INTEGER NOT NULL DEFAULT 0
+            );
         """)
 
         # Migrations for databases created before a column existed.
@@ -161,6 +175,17 @@ def init_db() -> None:
         _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
         _ensure_column(conn, "bills", "due_month", "due_month INTEGER")
         _ensure_column(conn, "bills", "due_year", "due_year INTEGER")
+
+        # Seed the canonical categories. INSERT OR IGNORE keys on the UNIQUE
+        # name, so this is idempotent and never disturbs user-added rows or a
+        # category whose position the user has changed — it only backfills any
+        # canonical name that is missing (including on an older restored DB).
+        for position, name in enumerate(CATEGORIES):
+            conn.execute(
+                "INSERT OR IGNORE INTO categories (name, position, is_protected)"
+                " VALUES (?, ?, ?)",
+                (name, position, 1 if name in PROTECTED_CATEGORIES else 0),
+            )
 
 
 def backup_database(dest: Path) -> None:

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from financeguru import reporting
-from financeguru.categories import CATEGORIES
+from financeguru.repositories import categories as category_repo
 
 _WINDOW = 12
 
@@ -95,7 +95,7 @@ class ChartsView(QWidget):
 
         chart.setTitle("Monthly spending — By category")
         series = QStackedBarSeries()
-        for cat in CATEGORIES:
+        for cat in category_repo.names():
             values = [entry["by_category"].get(cat, 0.0) for entry in self._months]
             if not any(values):
                 continue  # skip categories with no activity to avoid legend noise
@@ -148,9 +148,11 @@ class ChartsView(QWidget):
         breakdown = reporting.category_breakdown(year, month)
 
         series = QPieSeries()
-        # Iterate CATEGORIES for a stable slice order; fall back to any extras.
-        ordered = [c for c in CATEGORIES if c in breakdown]
-        ordered += [c for c in breakdown if c not in CATEGORIES]
+        # Iterate the category list for a stable slice order; fall back to any
+        # extras (e.g. a category since deleted but still on old records).
+        category_names = category_repo.names()
+        ordered = [c for c in category_names if c in breakdown]
+        ordered += [c for c in breakdown if c not in category_names]
         for cat in ordered:
             amt = breakdown[cat]
             if amt <= 0:

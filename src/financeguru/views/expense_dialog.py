@@ -4,9 +4,10 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox, QFormLayout, QTextEdit, QVBoxLayout,
 )
 
-from financeguru.categories import CATEGORIES, DEFAULT_CATEGORY
+from financeguru.categories import DEFAULT_CATEGORY
 from financeguru.models.expense import Expense
 from financeguru.money import cents
+from financeguru.repositories import categories as category_repo
 
 
 class ExpenseDialog(QDialog):
@@ -30,7 +31,7 @@ class ExpenseDialog(QDialog):
         form.addRow("Date", self._date)
 
         self._category = QComboBox()
-        self._category.addItems(CATEGORIES)
+        self._category.addItems(category_repo.names())
         self._category.setCurrentText(DEFAULT_CATEGORY)
         form.addRow("Category", self._category)
 
@@ -54,6 +55,10 @@ class ExpenseDialog(QDialog):
     def _prefill(self, expense: Expense) -> None:
         self._amount.setValue(float(expense.amount))
         self._date.setDate(QDate.fromString(expense.spent_date, "yyyy-MM-dd"))
+        # Keep an expense's existing category selectable even if it was since
+        # deleted from the picker, so editing doesn't silently re-categorize it.
+        if self._category.findText(expense.category) < 0:
+            self._category.addItem(expense.category)
         self._category.setCurrentText(expense.category)
         self._notes.setPlainText(expense.notes or "")
 

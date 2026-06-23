@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 
 from financeguru.models.expense import Expense
 from financeguru.repositories import expenses as expense_repo
+from financeguru.views.category_dialog import CategoryDialog
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.expense_dialog import ExpenseDialog
 
@@ -23,10 +24,12 @@ class ExpensesView(QWidget):
         self._btn_delete = QPushButton("Delete")
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
+        self._btn_categories = QPushButton("Manage Categories…")
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
         btn_bar.addStretch()
+        btn_bar.addWidget(self._btn_categories)
         layout.addLayout(btn_bar)
 
         self._table = QTableWidget(0, 4)
@@ -40,6 +43,7 @@ class ExpensesView(QWidget):
         self._btn_add.clicked.connect(self._on_add)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
+        self._btn_categories.clicked.connect(self._on_manage_categories)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
 
@@ -76,6 +80,11 @@ class ExpensesView(QWidget):
         enabled = bool(self._table.selectedItems())
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(enabled)
+
+    def _on_manage_categories(self) -> None:
+        # Pickers read categories from the DB each time they open, so no refresh
+        # of this view is needed after the user edits the category list.
+        CategoryDialog(self).exec()
 
     def _on_add(self) -> None:
         dialog = ExpenseDialog(self)
