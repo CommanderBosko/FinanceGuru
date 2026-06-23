@@ -10,9 +10,11 @@ CATEGORIES = [
     "Housing",
     "Utilities",
     "Food",
+    "Eating out",
     "Transport",
     "Health",
     "Entertainment",
+    "Pets",
     "Savings",
     "Other",
 ]
