@@ -4,6 +4,60 @@ _Active log: [session-summary.md](session-summary.md). Older entries are appende
 
 ---
 
+## Session: 2026-06-07 (Night #2) — Security Audit #2: CSV Injection, Restore Safety, File Perms
+
+**Duration Estimate**: Single focused session
+**Session Focus**: Second comprehensive security audit of the ~3,500-line codebase (all new features added since the first audit: Goals, Debt Snowball, Income/Salary, Stock Tips, File menu with Backup/Restore/Export CSV, context menus, search). Findings triaged by severity and all actionable items fixed and pushed.
+
+### What Was Accomplished
+
+- Parallelized the audit across three sub-agents: data layer (DB access, SQL, schema), network/dependencies (yfinance, prices.py, pyproject.toml), and file operations (backup, restore, CSV export, permissions).
+- **CRITICAL fix — CSV/formula injection** (`db.py`): Added `_csv_safe()` helper that prefixes cells beginning with `=`, `+`, `-`, `@`, TAB, or CR with a literal apostrophe, neutralizing spreadsheet formula execution when exported CSVs are opened in Excel or LibreOffice Calc.
+- **MEDIUM fix — Restore safety** (`db.py`): `restore_database()` now rejects any source file that lacks the FinanceGuru core tables (`bills`, `payments`, `stocks`, `incomes`, `debts`, `goals`, `stock_tips`), giving a clear error message instead of silently overwriting the live database with an unrelated SQLite file. Also writes a timestamped `.pre-restore-YYYYMMDD-HHMMSS.bak` copy of the current database before overwriting, and calls `init_db()` after restore so backups from older app versions gain any schema columns added since.
+- **MEDIUM fix — Export identifier hardening** (`db.py`): Table names from `sqlite_master` are now validated with `_IDENT_RE.fullmatch()` before being interpolated into SQL or used as filenames. Tables with non-identifier characters are skipped, blocking SQL injection and path traversal from a crafted/restored database.
+- **LOW fix — Backup file permissions** (`db.py`): `backup_database()` now `chmod 0o600`s the destination file before the SQLite backup writes into it, so the backup is never momentarily world-readable on multi-user machines.
+- **LOW fix — CSV file permissions** (`db.py`): Each exported CSV file is `chmod 0o600` after writing; the CSVs hold the same plaintext financial data as the database.
+- **LOW fix — Price fetch error hygiene** (`prices.py`): `PriceFetcher` and `TipFetcher` no longer surface raw exception messages (which can contain URLs, hostnames, proxy details) to the UI. Instead, tracebacks are logged to `stderr` and a generic `_FETCH_ERROR_MSG` constant is emitted to the user. Additionally, `_fetch_one()` in `TipFetcher` now guards the analyst mean price target with `math.isfinite(mean) and mean > 0`, rejecting NaN/inf/non-positive values that could appear as `"nan"` in the UI.
+- Code review (`/code-review` at high effort) run on the full diff before commit — returned clean with no correctness bugs.
+- All changes committed as `54a62c6` and pushed to `origin/main`.
+
+### Files Changed
+
+- `src/financeguru/db.py` — Added `_CORE_TABLES`, `_CSV_FORMULA_PREFIXES`, `_csv_safe()`; hardened `backup_database()` (pre-chmod), `restore_database()` (schema validation, pre-restore .bak, `init_db()` call), `export_all_csv()` (identifier validation, `_csv_safe()` on all rows, per-file chmod); added `from datetime import datetime` import. (+82 / -4 lines)
+- `src/financeguru/prices.py` — Swapped raw `str(exc)` for `_FETCH_ERROR_MSG` constant in both fetcher error paths; log tracebacks to stderr via `traceback.print_exc`; added `math.isfinite` + sign guard on analyst price target. Added `import sys`, `import traceback`. (+20 / -8 lines)
+
+### Commits This Session
+
+- `54a62c6` — harden(security): fix CSV injection, restore safety, file perms
+
+### Decisions Made
+
+- **`_csv_safe()` uses apostrophe prefix** — The OWASP-recommended approach; the apostrophe is stripped by spreadsheet applications before display, so the user sees the original value while formula execution is blocked. Applies to all exported cell values regardless of table.
+- **Reject-before-overwrite in restore** — Checking for core tables (not merely probing that the file opens as SQLite) prevents a subtle attack/mistake vector where any SQLite file could wipe the live database. The error message names the missing tables to aid legitimate debugging.
+- **Timestamped `.bak` on restore** — The current database is preserved as a recoverable artifact immediately before overwrite. The timestamp in the filename makes successive restores non-colliding.
+- **`init_db()` after restore** — Older-schema backups are migrated in place rather than leaving the live session with a schema the running code doesn't expect. Idempotent — existing columns are unaffected.
+- **Generic fetch-error message** — URLs, hostnames, and proxy configuration are considered sensitive environment data. Raw exceptions expose these to the user unnecessarily; logging to stderr preserves debuggability without leaking to the GUI.
+- **Finiteness + sign guard on analyst target** — `yfinance` can return NaN for mean price targets when analyst coverage is sparse. Filtering at the parse boundary keeps `None` as the canonical "not available" sentinel and prevents downstream display of `"nan"`.
+
+### Issues Encountered
+
+- None. All fixes applied cleanly; code review found no regressions.
+
+### Remaining / Next Session
+
+Intentionally deferred (documented but not changed this session):
+- **Leaked daemon threads on fetch timeout** — `prices.py` uses daemon threads for per-ticker timeout; if the outer QThread is torn down while a daemon thread is still in a blocking yfinance call, the thread leaks until process exit. Fix requires injecting a `requests.Session` with native socket timeouts into yfinance so the network call itself is bounded.
+- **Loose `pyproject.toml` version ranges** — `PySide6 >=6.7,<7` and `yfinance >=1.3,<2` are fine under Nix (locked by `flake.lock`) but could allow a breaking minor update for `pip install` users.
+- **yfinance is an unofficial Yahoo Finance scraper** — Largest residual supply-chain exposure: no SLA, can break on Yahoo API changes, no audit trail. No alternative without a paid market-data API.
+
+Other ongoing items:
+- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input (top priority).
+- Write pytest tests for the repository layer using an in-memory SQLite database.
+- Add user-visible error feedback when yfinance fetch fails (now partially done — generic message is shown; structured retry/rate-limit handling is still open).
+- Consider a reporting/charts tab.
+
+---
+
 ## Session: 2026-06-07 (Night) — File Menu: Backup, Restore, and Export to CSV
 
 **Duration Estimate**: Single focused session

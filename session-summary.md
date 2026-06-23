@@ -4,6 +4,34 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-06-22 — User-Managed Categories, Category Rename Migration, Savings-Calc Expenses, Two Skills
+
+**Focus**: Let the user manage their own spending categories, rename two of them cleanly, and make the savings calculator account for actual spending.
+
+### What changed (and why)
+- **Two categories then full feature, staged** (`abc82c3`, `745874c`): added "Eating out"/"Pets" as a one-line list change, then promoted categories from a fixed Python list to a seeded `categories` table with a repo, a "Manage Categories…" dialog (add/rename/delete), and protected Savings/Other. Bill/expense pickers and charts now read the live list from the DB. Each stage was an independent, reviewable commit (user chose "both, staged").
+- **Food→Groceries, Eating out→Restaurants** (`b1924d9`): updated the seed list and added a guarded, idempotent `_rename_category` migration in `init_db()` that renames the row **and re-tags** existing bills/expenses, so reports don't show split old/new buckets. Runs before the seeding loop so `INSERT OR IGNORE` doesn't re-add the old name.
+- **Savings calculator nets out the month's expenses** (`6b506fe`): the Income tab's Monthly Budget now subtracts `expenses.total_for_month(current)` on top of bills, with a new "This Month's Expenses" line. Expenses table only (not payments — bills already count as obligations).
+- **Two project skills** (`9517733`): `db-migration` (the schema-change conventions this session surfaced) and `new-feature` (end-to-end layered build checklist), the latter delegating to `db-migration`/`qt-smoke`/`audit`.
+- 100 → 113 tests; each change verified with pytest + a headless `qt-smoke`.
+
+### Decisions
+- **Protected categories** (Savings, Other) can't be renamed/deleted — reporting hard-codes those names; guarded in both the UI and the repo SQL.
+- **Category columns stay free text** — in-app rename is picker-only by design; the *code* rename migration re-tags records (the complete version). Intentional asymmetry, documented in both places.
+- **Migration before seeding**, guarded for idempotency; tested by simulating a pre-rename DB since the conftest fixture only starts fresh.
+- Savings calc uses the **current calendar month**, expenses table only — so "Extra" starts high and shrinks as spending is logged (intended for a running calculator).
+
+### Issues / surprises
+- The conftest `temp_db` fixture always runs a fresh `init_db()`, so it never exercises the migration's *upgrade* path — the migration tests have to roll the DB back to the old shape first. Captured this as a gotcha in the `db-migration` skill.
+
+### Next session
+- Net-worth trend view (still the top deferred item).
+- Optional: make the in-app category rename also re-tag records, to match the migration's behavior (raised, not done).
+
+**Commits**: `abc82c3..9517733` (5 commits + this close)
+
+---
+
 ## Session: 2026-06-17 — Audit Pass #3, Per-Month Bill Scheduling, Two Skills
 
 **Focus**: Re-audit the grown codebase, fix what it surfaced, and capture the recurring workflows as skills.
@@ -108,60 +136,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - Add structured retry / rate-limit backoff for yfinance fetches.
 
 **Commits**: `43c4199` (1 commit) + this session-close
-
----
-
-## Session: 2026-06-07 (Night #2) — Security Audit #2: CSV Injection, Restore Safety, File Perms
-
-**Duration Estimate**: Single focused session
-**Session Focus**: Second comprehensive security audit of the ~3,500-line codebase (all new features added since the first audit: Goals, Debt Snowball, Income/Salary, Stock Tips, File menu with Backup/Restore/Export CSV, context menus, search). Findings triaged by severity and all actionable items fixed and pushed.
-
-### What Was Accomplished
-
-- Parallelized the audit across three sub-agents: data layer (DB access, SQL, schema), network/dependencies (yfinance, prices.py, pyproject.toml), and file operations (backup, restore, CSV export, permissions).
-- **CRITICAL fix — CSV/formula injection** (`db.py`): Added `_csv_safe()` helper that prefixes cells beginning with `=`, `+`, `-`, `@`, TAB, or CR with a literal apostrophe, neutralizing spreadsheet formula execution when exported CSVs are opened in Excel or LibreOffice Calc.
-- **MEDIUM fix — Restore safety** (`db.py`): `restore_database()` now rejects any source file that lacks the FinanceGuru core tables (`bills`, `payments`, `stocks`, `incomes`, `debts`, `goals`, `stock_tips`), giving a clear error message instead of silently overwriting the live database with an unrelated SQLite file. Also writes a timestamped `.pre-restore-YYYYMMDD-HHMMSS.bak` copy of the current database before overwriting, and calls `init_db()` after restore so backups from older app versions gain any schema columns added since.
-- **MEDIUM fix — Export identifier hardening** (`db.py`): Table names from `sqlite_master` are now validated with `_IDENT_RE.fullmatch()` before being interpolated into SQL or used as filenames. Tables with non-identifier characters are skipped, blocking SQL injection and path traversal from a crafted/restored database.
-- **LOW fix — Backup file permissions** (`db.py`): `backup_database()` now `chmod 0o600`s the destination file before the SQLite backup writes into it, so the backup is never momentarily world-readable on multi-user machines.
-- **LOW fix — CSV file permissions** (`db.py`): Each exported CSV file is `chmod 0o600` after writing; the CSVs hold the same plaintext financial data as the database.
-- **LOW fix — Price fetch error hygiene** (`prices.py`): `PriceFetcher` and `TipFetcher` no longer surface raw exception messages (which can contain URLs, hostnames, proxy details) to the UI. Instead, tracebacks are logged to `stderr` and a generic `_FETCH_ERROR_MSG` constant is emitted to the user. Additionally, `_fetch_one()` in `TipFetcher` now guards the analyst mean price target with `math.isfinite(mean) and mean > 0`, rejecting NaN/inf/non-positive values that could appear as `"nan"` in the UI.
-- Code review (`/code-review` at high effort) run on the full diff before commit — returned clean with no correctness bugs.
-- All changes committed as `54a62c6` and pushed to `origin/main`.
-
-### Files Changed
-
-- `src/financeguru/db.py` — Added `_CORE_TABLES`, `_CSV_FORMULA_PREFIXES`, `_csv_safe()`; hardened `backup_database()` (pre-chmod), `restore_database()` (schema validation, pre-restore .bak, `init_db()` call), `export_all_csv()` (identifier validation, `_csv_safe()` on all rows, per-file chmod); added `from datetime import datetime` import. (+82 / -4 lines)
-- `src/financeguru/prices.py` — Swapped raw `str(exc)` for `_FETCH_ERROR_MSG` constant in both fetcher error paths; log tracebacks to stderr via `traceback.print_exc`; added `math.isfinite` + sign guard on analyst price target. Added `import sys`, `import traceback`. (+20 / -8 lines)
-
-### Commits This Session
-
-- `54a62c6` — harden(security): fix CSV injection, restore safety, file perms
-
-### Decisions Made
-
-- **`_csv_safe()` uses apostrophe prefix** — The OWASP-recommended approach; the apostrophe is stripped by spreadsheet applications before display, so the user sees the original value while formula execution is blocked. Applies to all exported cell values regardless of table.
-- **Reject-before-overwrite in restore** — Checking for core tables (not merely probing that the file opens as SQLite) prevents a subtle attack/mistake vector where any SQLite file could wipe the live database. The error message names the missing tables to aid legitimate debugging.
-- **Timestamped `.bak` on restore** — The current database is preserved as a recoverable artifact immediately before overwrite. The timestamp in the filename makes successive restores non-colliding.
-- **`init_db()` after restore** — Older-schema backups are migrated in place rather than leaving the live session with a schema the running code doesn't expect. Idempotent — existing columns are unaffected.
-- **Generic fetch-error message** — URLs, hostnames, and proxy configuration are considered sensitive environment data. Raw exceptions expose these to the user unnecessarily; logging to stderr preserves debuggability without leaking to the GUI.
-- **Finiteness + sign guard on analyst target** — `yfinance` can return NaN for mean price targets when analyst coverage is sparse. Filtering at the parse boundary keeps `None` as the canonical "not available" sentinel and prevents downstream display of `"nan"`.
-
-### Issues Encountered
-
-- None. All fixes applied cleanly; code review found no regressions.
-
-### Remaining / Next Session
-
-Intentionally deferred (documented but not changed this session):
-- **Leaked daemon threads on fetch timeout** — `prices.py` uses daemon threads for per-ticker timeout; if the outer QThread is torn down while a daemon thread is still in a blocking yfinance call, the thread leaks until process exit. Fix requires injecting a `requests.Session` with native socket timeouts into yfinance so the network call itself is bounded.
-- **Loose `pyproject.toml` version ranges** — `PySide6 >=6.7,<7` and `yfinance >=1.3,<2` are fine under Nix (locked by `flake.lock`) but could allow a breaking minor update for `pip install` users.
-- **yfinance is an unofficial Yahoo Finance scraper** — Largest residual supply-chain exposure: no SLA, can break on Yahoo API changes, no audit trail. No alternative without a paid market-data API.
-
-Other ongoing items:
-- Wire `financeguru` into `~/NixOS/flake.nix` as a flake input (top priority).
-- Write pytest tests for the repository layer using an in-memory SQLite database.
-- Add user-visible error feedback when yfinance fetch fails (now partially done — generic message is shown; structured retry/rate-limit handling is still open).
-- Consider a reporting/charts tab.
 
 ---
 
