@@ -97,7 +97,7 @@ def monthly_spending(window: int = 12) -> list[dict]:
         {
             "year": 2026, "month": 6, "label": "2026-06",
             "total": 1234.56,                       # float, Savings EXCLUDED
-            "by_category": {"Food": 200.0, ...},    # float, Savings INCLUDED
+            "by_category": {"Groceries": 200.0, ...},  # float, Savings INCLUDED
         }
     """
     result: list[dict] = []

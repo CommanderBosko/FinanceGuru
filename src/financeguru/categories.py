@@ -12,8 +12,8 @@ special constants below. Editing this list only affects newly-seeded databases.
 CATEGORIES = [
     "Housing",
     "Utilities",
-    "Food",
-    "Eating out",
+    "Groceries",
+    "Restaurants",
     "Transport",
     "Health",
     "Entertainment",

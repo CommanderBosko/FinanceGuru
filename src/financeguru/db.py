@@ -69,6 +69,31 @@ def _ensure_column(conn, table: str, column: str, ddl: str) -> None:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
 
 
+# One-time renames of seeded categories, applied to existing databases on
+# startup. Each (old, new) renames the `categories` row and re-tags any bills
+# and expenses still carrying the old name, so the rename is complete rather
+# than leaving the old text on historical records.
+_CATEGORY_RENAMES = [
+    ("Food", "Groceries"),
+    ("Eating out", "Restaurants"),
+]
+
+
+def _rename_category(conn, old: str, new: str) -> None:
+    """Rename a category and re-tag the records that reference it.
+
+    Guarded so it is a no-op once applied, on a fresh (not-yet-seeded) database,
+    or if the user already has a category with the new name — in which case the
+    old one is left alone rather than clobbered.
+    """
+    names = {row["name"] for row in conn.execute("SELECT name FROM categories")}
+    if old not in names or new in names:
+        return
+    conn.execute("UPDATE categories SET name=? WHERE name=?", (new, old))
+    conn.execute("UPDATE bills SET category=? WHERE category=?", (new, old))
+    conn.execute("UPDATE expenses SET category=? WHERE category=?", (new, old))
+
+
 def init_db() -> None:
     DB_DIR.mkdir(parents=True, exist_ok=True)
     # Restrict the data directory to the owner; this also covers the -wal/-journal
@@ -175,6 +200,11 @@ def init_db() -> None:
         _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
         _ensure_column(conn, "bills", "due_month", "due_month INTEGER")
         _ensure_column(conn, "bills", "due_year", "due_year INTEGER")
+
+        # Apply category renames before seeding so the new name is already
+        # present and the INSERT OR IGNORE below doesn't re-add the old one.
+        for old, new in _CATEGORY_RENAMES:
+            _rename_category(conn, old, new)
 
         # Seed the canonical categories. INSERT OR IGNORE keys on the UNIQUE
         # name, so this is idempotent and never disturbs user-added rows or a
