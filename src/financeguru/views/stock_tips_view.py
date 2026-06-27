@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.stock_tip import StockTip
 from financeguru.prices import TipFetcher, stop_fetcher
 from financeguru.repositories import stock_tips as tips_repo
+from financeguru.views._table import center, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_tip_dialog import StockTipDialog
 
@@ -78,6 +79,10 @@ class StockTipsView(QWidget):
 
         self._load()
 
+    def refresh(self) -> None:
+        # Public hook MainWindow calls after a DB restore / on tab switch.
+        self._load()
+
     def _load(self) -> None:
         self._tips = tips_repo.get_all()
         self._render()
@@ -90,16 +95,6 @@ class StockTipsView(QWidget):
         self._status.setText(f"{count} tip{'s' if count != 1 else ''}")
 
     def _render_row(self, row: int, tip: StockTip) -> None:
-        def _center(text: str) -> QTableWidgetItem:
-            item = QTableWidgetItem(text)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            return item
-
-        def _right(text: str) -> QTableWidgetItem:
-            item = QTableWidgetItem(text)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            return item
-
         def _colored(item: QTableWidgetItem, value: str) -> QTableWidgetItem:
             if value in _BULLISH:
                 item.setForeground(_GREEN)
@@ -113,16 +108,16 @@ class StockTipsView(QWidget):
         analyst_target_str = f"${tip.analyst_target:,.2f}" if tip.analyst_target else _PLACEHOLDER
         analyst_count_str = str(tip.analyst_count) if tip.analyst_count else _PLACEHOLDER
 
-        action_item = _colored(_center(tip.action), tip.action)
-        analyst_item = _colored(_center(tip.analyst_action or _PLACEHOLDER), tip.analyst_action or "")
+        action_item = _colored(center(tip.action), tip.action)
+        analyst_item = _colored(center(tip.analyst_action or _PLACEHOLDER), tip.analyst_action or "")
 
-        self._table.setItem(row, 0, _center(tip.ticker))
+        self._table.setItem(row, 0, center(tip.ticker))
         self._table.setItem(row, 1, action_item)
-        self._table.setItem(row, 2, _right(target_str))
-        self._table.setItem(row, 3, _center(stars))
+        self._table.setItem(row, 2, right(target_str))
+        self._table.setItem(row, 3, center(stars))
         self._table.setItem(row, 4, analyst_item)
-        self._table.setItem(row, 5, _right(analyst_target_str))
-        self._table.setItem(row, 6, _center(analyst_count_str))
+        self._table.setItem(row, 5, right(analyst_target_str))
+        self._table.setItem(row, 6, center(analyst_count_str))
         self._table.setItem(row, 7, QTableWidgetItem(tip.notes or ""))
 
     def _selected_tip(self) -> StockTip | None:

@@ -1,4 +1,5 @@
 """Normalization helpers for turning incomes and bills into monthly figures."""
+import sys
 from decimal import Decimal
 
 from financeguru.models.bill import Bill
@@ -44,7 +45,15 @@ def monthly_income(income: Income) -> Decimal:
     if income.frequency == SPECIFIC_DAYS:
         # One paycheck of `amount` on each selected day of the month.
         return income.amount * len(parse_pay_days(income.pay_days))
-    paychecks, months = _MONTHLY_FACTOR.get(income.frequency, (1, 1))
+    factor = _MONTHLY_FACTOR.get(income.frequency)
+    if factor is None:
+        # The UI constrains frequency to INCOME_FREQUENCIES; an unknown value
+        # means bad/legacy data. Fall back to monthly but surface it rather than
+        # silently mis-normalizing.
+        print(f"unknown income frequency {income.frequency!r}; treating as monthly",
+              file=sys.stderr)
+        factor = (1, 1)
+    paychecks, months = factor
     return income.amount * paychecks / months
 
 

@@ -85,7 +85,11 @@ class ChartsView(QWidget):
         chart = self._time_chart
         chart.removeAllSeries()
         for axis in list(chart.axes()):
+            # removeAxis hands ownership back to us; delete it so repeated
+            # refreshes don't leak the old axis objects (removeAllSeries already
+            # deletes the series side).
             chart.removeAxis(axis)
+            axis.deleteLater()
 
         labels = [entry["label"] for entry in self._months]
 

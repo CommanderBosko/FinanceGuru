@@ -84,6 +84,10 @@ class StockTipDialog(QDialog):
             return
         self._fetch_btn.setEnabled(False)
         self._fetch_status.setText("Fetching…")
+        # Free the previous fetcher (finished — the button re-enables only on
+        # done) so repeated fetches don't pile up dead QThread children.
+        if self._fetcher is not None:
+            self._fetcher.deleteLater()
         self._fetcher = TipFetcher([ticker], self)
         self._fetcher.tips_ready.connect(self._on_fetch_done)
         self._fetcher.fetch_error.connect(self._on_fetch_error)

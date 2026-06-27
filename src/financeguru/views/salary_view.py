@@ -14,6 +14,7 @@ from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import incomes as income_repo
+from financeguru.views._table import center, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
 
@@ -136,23 +137,16 @@ class SalaryView(QWidget):
     def _render_table(self) -> None:
         self._table.setRowCount(len(self._incomes))
         for row, inc in enumerate(self._incomes):
-            def _right(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
             monthly = monthly_income(inc)
             self._table.setItem(row, 0, QTableWidgetItem(inc.name))
-            self._table.setItem(row, 1, _right(f"${inc.amount:,.2f}"))
+            self._table.setItem(row, 1, right(f"${inc.amount:,.2f}"))
             if inc.frequency == SPECIFIC_DAYS:
                 days = format_pay_days(inc.pay_days)
                 freq_text = f"days {days}" if days else SPECIFIC_DAYS
             else:
                 freq_text = inc.frequency
-            freq_item = QTableWidgetItem(freq_text)
-            freq_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 2, freq_item)
-            self._table.setItem(row, 3, _right(f"${monthly:,.2f}"))
+            self._table.setItem(row, 2, center(freq_text))
+            self._table.setItem(row, 3, right(f"${monthly:,.2f}"))
             self._table.setItem(row, 4, QTableWidgetItem(inc.notes or ""))
 
     def _recompute(self) -> None:

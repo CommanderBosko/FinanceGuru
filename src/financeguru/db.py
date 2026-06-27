@@ -3,9 +3,11 @@ import os
 import re
 import shutil
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Generator
 
 from financeguru.categories import CATEGORIES, PROTECTED_CATEGORIES
 
@@ -39,7 +41,14 @@ DB_DIR = Path.home() / ".local" / "share" / "financeguru"
 DB_PATH = DB_DIR / "finance.db"
 
 
-def get_connection() -> sqlite3.Connection:
+@contextmanager
+def get_connection() -> Generator[sqlite3.Connection, None, None]:
+    """Yield a configured connection inside a transaction, then close it.
+
+    ``with conn`` commits on success / rolls back on error but never *closes* the
+    connection; wrapping it here guarantees the handle (and its file descriptor)
+    is released deterministically rather than waiting on GC.
+    """
     conn = sqlite3.connect(DB_PATH)
     # Financial data is plaintext SQLite — keep it readable only by the owner,
     # since these machines have multiple local users (bosko, natty).
@@ -49,7 +58,11 @@ def get_connection() -> sqlite3.Connection:
         pass
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 def _ensure_column(conn, table: str, column: str, ddl: str) -> None:
@@ -316,13 +329,17 @@ def export_all_csv(dest_dir: Path) -> list[Path]:
                 continue
             cur = conn.execute(f'SELECT * FROM "{table}"')
             path = dest_dir / f"{table}.csv"
-            with open(path, "w", newline="", encoding="utf-8") as f:
+            # The CSV holds the same plaintext financial data as the DB. Create it
+            # owner-only *before* writing so it's never momentarily world-readable
+            # on these multi-user machines (open(path,"w") would use the umask).
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with open(fd, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow([col[0] for col in cur.description])
+                writer.writerow([_csv_safe(col[0]) for col in cur.description])
                 writer.writerows(
                     [_csv_safe(value) for value in row] for row in cur.fetchall()
                 )
-            # The CSV holds the same plaintext financial data as the DB.
+            # O_CREAT leaves an already-existing file's mode untouched; re-assert.
             try:
                 os.chmod(path, 0o600)
             except OSError:

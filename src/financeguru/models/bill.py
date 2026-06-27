@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
 
+from financeguru.categories import DEFAULT_CATEGORY
+
 
 @dataclass
 class Bill:
@@ -17,7 +19,7 @@ class Bill:
     recurrence: str = "monthly"
     is_active: bool = True
     notes: Optional[str] = None
-    category: str = "Other"
+    category: str = DEFAULT_CATEGORY
     id: Optional[int] = None
 
     def is_due_in(self, year: int, month: int) -> bool:

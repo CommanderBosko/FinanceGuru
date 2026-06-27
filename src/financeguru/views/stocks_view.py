@@ -9,6 +9,7 @@ from financeguru.models.stock import Stock
 from financeguru.money import ZERO, to_decimal
 from financeguru.prices import PriceFetcher, stop_fetcher
 from financeguru.repositories import stocks as stock_repo
+from financeguru.views._table import center, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_dialog import StockDialog
 
@@ -73,6 +74,10 @@ class StocksView(QWidget):
 
         self._refresh()
 
+    def refresh(self) -> None:
+        # Public hook MainWindow calls after a DB restore / on tab switch.
+        self._refresh()
+
     def _refresh(self) -> None:
         self._stocks = stock_repo.get_all()
         self._table.setRowCount(len(self._stocks))
@@ -86,21 +91,11 @@ class StocksView(QWidget):
             raw_price = self._prices.get(stock.ticker)
             current = to_decimal(raw_price) if raw_price is not None else None
 
-            def _right(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
-            def _center(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                return item
-
             shares_str = f"{stock.shares:,.4f}".rstrip("0").rstrip(".")
-            self._table.setItem(row, 0, _center(stock.ticker))
-            self._table.setItem(row, 1, _right(shares_str))
-            self._table.setItem(row, 2, _right(f"${stock.purchase_price:,.2f}"))
-            self._table.setItem(row, 3, _right(f"${cost_basis:,.2f}"))
+            self._table.setItem(row, 0, center(stock.ticker))
+            self._table.setItem(row, 1, right(shares_str))
+            self._table.setItem(row, 2, right(f"${stock.purchase_price:,.2f}"))
+            self._table.setItem(row, 3, right(f"${cost_basis:,.2f}"))
 
             if current is not None:
                 market_value = stock.shares * current
@@ -109,10 +104,10 @@ class StocksView(QWidget):
                 total_market += market_value
                 color = _GREEN if gain >= 0 else _RED
 
-                price_item = _right(f"${current:,.2f}")
-                mv_item = _right(f"${market_value:,.2f}")
-                gain_item = _right(f"${gain:+,.2f}")
-                pct_item = _right(f"{gain_pct:+.2f}%")
+                price_item = right(f"${current:,.2f}")
+                mv_item = right(f"${market_value:,.2f}")
+                gain_item = right(f"${gain:+,.2f}")
+                pct_item = right(f"{gain_pct:+.2f}%")
                 for item in (gain_item, pct_item):
                     item.setForeground(color)
 
@@ -122,7 +117,7 @@ class StocksView(QWidget):
                 self._table.setItem(row, 7, pct_item)
             else:
                 for col in range(4, 8):
-                    self._table.setItem(row, col, _center(_PLACEHOLDER))
+                    self._table.setItem(row, col, center(_PLACEHOLDER))
 
             self._table.setItem(row, 8, QTableWidgetItem(stock.notes or ""))
 

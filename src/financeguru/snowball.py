@@ -77,6 +77,15 @@ def _simulate(
         {"debt": d, "balance": d.balance, "interest_paid": ZERO, "payoff_month": None}
         for d in ordered
     ]
+    # A debt entered with a zero (sub-cent) balance is already paid off. Mark it
+    # up front so it doesn't trip the in-loop payoff roll-up — which would fold a
+    # minimum payment the user isn't actually making into the snowball, paying
+    # other debts off faster than reality — and so its payoff_month is never left
+    # unset (None) when the results are sorted below.
+    for s in states:
+        if s["balance"] < CENT:
+            s["balance"] = ZERO
+            s["payoff_month"] = 0
     rolling_extra = max(ZERO, to_decimal(extra))
     month = 0
     capped = False

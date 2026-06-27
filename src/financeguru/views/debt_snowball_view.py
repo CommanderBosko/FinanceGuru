@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.debt import Debt
 from financeguru.repositories import debts as debt_repo
 from financeguru.snowball import PayoffPlan, calculate, payoff_date
+from financeguru.views._table import center, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.debt_dialog import DebtDialog
 
@@ -200,6 +201,10 @@ class DebtSnowballView(QWidget):
 
     # ── Data ──────────────────────────────────────────────────────────────
 
+    def refresh(self) -> None:
+        # Public hook MainWindow calls after a DB restore / on tab switch.
+        self._load()
+
     def _load(self) -> None:
         self._debts = debt_repo.get_all()
         self._render_debt_table()
@@ -207,15 +212,10 @@ class DebtSnowballView(QWidget):
     def _render_debt_table(self) -> None:
         self._debt_table.setRowCount(len(self._debts))
         for row, debt in enumerate(self._debts):
-            def _right(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
             self._debt_table.setItem(row, 0, QTableWidgetItem(debt.name))
-            self._debt_table.setItem(row, 1, _right(f"${debt.balance:,.2f}"))
-            self._debt_table.setItem(row, 2, _right(f"{debt.interest_rate:.2f}%"))
-            self._debt_table.setItem(row, 3, _right(f"${debt.minimum_payment:,.2f}"))
+            self._debt_table.setItem(row, 1, right(f"${debt.balance:,.2f}"))
+            self._debt_table.setItem(row, 2, right(f"{debt.interest_rate:.2f}%"))
+            self._debt_table.setItem(row, 3, right(f"${debt.minimum_payment:,.2f}"))
             self._debt_table.setItem(row, 4, QTableWidgetItem(debt.notes or ""))
 
     def _selected_debt(self) -> Debt | None:
@@ -322,23 +322,13 @@ class DebtSnowballView(QWidget):
         table.setHorizontalHeaderLabels(headers)
         table.setRowCount(len(plan.schedule))
 
-        def _right(text: str) -> QTableWidgetItem:
-            item = QTableWidgetItem(text)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            return item
-
-        def _center(text: str) -> QTableWidgetItem:
-            item = QTableWidgetItem(text)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            return item
-
         for row, m in enumerate(plan.schedule):
-            table.setItem(row, 0, _center(str(m.month)))
-            table.setItem(row, 1, _center(payoff_date(m.month)))
+            table.setItem(row, 0, center(str(m.month)))
+            table.setItem(row, 1, center(payoff_date(m.month)))
             for col, amount in enumerate(m.payments):
                 text = f"${amount:,.2f}" if amount > 0 else "—"
-                table.setItem(row, 2 + col, _right(text))
-            table.setItem(row, len(headers) - 1, _right(f"${m.total:,.2f}"))
+                table.setItem(row, 2 + col, right(text))
+            table.setItem(row, len(headers) - 1, right(f"${m.total:,.2f}"))
 
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -351,23 +341,13 @@ class DebtSnowballView(QWidget):
         table.setRowCount(len(plan.debt_results))
 
         for row, r in enumerate(plan.debt_results):
-            def _right(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
-            def _center(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                return item
-
-            table.setItem(row, 0, _center(str(row + 1)))
+            table.setItem(row, 0, center(str(row + 1)))
             table.setItem(row, 1, QTableWidgetItem(r.name))
-            table.setItem(row, 2, _right(f"${r.original_balance:,.2f}"))
-            table.setItem(row, 3, _right(f"{r.apr:.2f}%"))
-            table.setItem(row, 4, _center(f"Month {r.payoff_month}"))
-            table.setItem(row, 5, _center(payoff_date(r.payoff_month)))
-            table.setItem(row, 6, _right(f"${r.interest_paid:,.2f}"))
+            table.setItem(row, 2, right(f"${r.original_balance:,.2f}"))
+            table.setItem(row, 3, right(f"{r.apr:.2f}%"))
+            table.setItem(row, 4, center(f"Month {r.payoff_month}"))
+            table.setItem(row, 5, center(payoff_date(r.payoff_month)))
+            table.setItem(row, 6, right(f"${r.interest_paid:,.2f}"))
 
         yrs, mos = divmod(plan.total_months, 12)
         duration = f"{yrs}y {mos}m" if yrs else f"{mos}m"

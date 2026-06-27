@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QFormLayout, QLineEdit, QTextEdit, QVBoxLayout,
+    QFormLayout, QLineEdit, QMessageBox, QTextEdit, QVBoxLayout,
 )
 
 from financeguru.models.debt import Debt
@@ -62,6 +62,7 @@ class DebtDialog(QDialog):
 
     def _on_accept(self) -> None:
         if not self._name.text().strip():
+            QMessageBox.information(self, "Name Required", "Give the debt a name.")
             self._name.setFocus()
             return
         self.accept()

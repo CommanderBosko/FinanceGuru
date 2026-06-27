@@ -63,6 +63,11 @@ class PaymentsView(QWidget):
 
         self._refresh()
 
+    def refresh(self) -> None:
+        # Public hook MainWindow calls after a DB restore / on tab switch (e.g.
+        # when a bill is renamed in another tab).
+        self._refresh()
+
     def _refresh(self) -> None:
         rows = payment_repo.get_all()
         if self._chk_current_only.isChecked():
@@ -115,7 +120,7 @@ class PaymentsView(QWidget):
 
     def _on_delete(self) -> None:
         row = self._table.currentRow()
-        if row < 0:
+        if row < 0 or not self._table.selectedItems():
             return
         rec = self._rows[row]
         answer = QMessageBox.question(

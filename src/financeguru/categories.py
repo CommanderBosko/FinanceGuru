@@ -25,8 +25,10 @@ CATEGORIES = [
 # Assigned to any bill/expense/payment that has no explicit category.
 DEFAULT_CATEGORY = "Other"
 
-# Goal contributions are ordinary payments against a bill tagged with this note
-# (see goals_view). They are force-categorized as savings in the reports.
+# Goal contributions are ordinary payments against the goal's linked bill. The
+# reporting layer identifies them by goals.bill_id (not by note text) and force-
+# categorizes them as Savings. GOAL_NOTE is the note stamped on those payments
+# when a goal creates its bill (see goals_view), purely for display/traceability.
 SAVINGS_CATEGORY = "Savings"
 GOAL_NOTE = "Goal"
 

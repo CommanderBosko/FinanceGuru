@@ -3,7 +3,7 @@ from datetime import date
 
 from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout,
-    QLineEdit, QComboBox, QSpinBox, QTextEdit, QVBoxLayout,
+    QLineEdit, QComboBox, QMessageBox, QSpinBox, QTextEdit, QVBoxLayout,
 )
 from financeguru.models.bill import Bill
 from financeguru.money import cents
@@ -76,7 +76,7 @@ class BillDialog(QDialog):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
@@ -89,6 +89,13 @@ class BillDialog(QDialog):
         # Yearly bills need a month; one-time bills need a month and a year.
         self._form.setRowVisible(self._due_month, recurrence in ("yearly", "one-time"))
         self._form.setRowVisible(self._due_year, recurrence == "one-time")
+
+    def _on_accept(self) -> None:
+        if not self._name.text().strip():
+            QMessageBox.information(self, "Name Required", "Give the bill a name.")
+            self._name.setFocus()
+            return
+        self.accept()
 
     def bill(self) -> Bill:
         recurrence = self._recurrence.currentText()

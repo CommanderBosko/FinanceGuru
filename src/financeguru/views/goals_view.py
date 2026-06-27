@@ -1,6 +1,5 @@
 from datetime import date
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -13,6 +12,7 @@ from financeguru.money import ZERO
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
 from financeguru.repositories import payments as payment_repo
+from financeguru.views._table import center, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.goal_dialog import GoalDialog
 
@@ -69,26 +69,16 @@ class GoalsView(QWidget):
         paid = payment_repo.total_paid_by_bill()
         self._table.setRowCount(len(self._goals))
         for row, goal in enumerate(self._goals):
-            def _right(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
-            def _center(text: str) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                return item
-
             # Each Goal-bill payment chips away at what's left to fund the goal.
             contributed = paid.get(goal.bill_id, ZERO) if goal.bill_id else ZERO
             left = max(goal.price - contributed, ZERO)
 
             self._table.setItem(row, 0, QTableWidgetItem(goal.name))
-            self._table.setItem(row, 1, _right(f"${goal.price:,.2f}"))
-            self._table.setItem(row, 2, _right(f"${left:,.2f}"))
-            self._table.setItem(row, 3, _center(goal.target_date))
-            self._table.setItem(row, 4, _center(str(months_remaining(goal.target_date))))
-            self._table.setItem(row, 5, _right(f"${goal.monthly_savings():,.2f}"))
+            self._table.setItem(row, 1, right(f"${goal.price:,.2f}"))
+            self._table.setItem(row, 2, right(f"${left:,.2f}"))
+            self._table.setItem(row, 3, center(goal.target_date))
+            self._table.setItem(row, 4, center(str(months_remaining(goal.target_date))))
+            self._table.setItem(row, 5, right(f"${goal.monthly_savings():,.2f}"))
 
     def _selected_goal(self) -> Goal | None:
         row = self._table.currentRow()

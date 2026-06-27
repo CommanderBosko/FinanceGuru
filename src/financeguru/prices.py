@@ -24,6 +24,20 @@ _REQUEST_TIMEOUT_S = 8.0
 _STOP_WAIT_MS = int(_REQUEST_TIMEOUT_S * 1000) + 1000
 
 
+def _safe_count(value) -> int:
+    """Coerce an analyst-recommendation cell to a non-negative int.
+
+    These come from a pandas row and can be NaN when a ticker has no coverage;
+    ``int(float('nan'))`` raises, so guard finiteness explicitly and treat any
+    missing/NaN/negative value as zero rather than failing the whole fetch.
+    """
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return int(n) if math.isfinite(n) and n >= 0 else 0
+
+
 def _make_session():
     """A curl_cffi session preserving yfinance's Chrome impersonation while
     forcing a short per-request socket timeout.
@@ -195,11 +209,11 @@ class TipFetcher(_TickerFetcher):
                 if row.empty:
                     row = summary.iloc[[0]]
                 row = row.iloc[0]
-                strong_buy = int(row.get("strongBuy", 0))
-                buy = int(row.get("buy", 0))
-                hold = int(row.get("hold", 0))
-                sell = int(row.get("sell", 0))
-                strong_sell = int(row.get("strongSell", 0))
+                strong_buy = _safe_count(row.get("strongBuy", 0))
+                buy = _safe_count(row.get("buy", 0))
+                hold = _safe_count(row.get("hold", 0))
+                sell = _safe_count(row.get("sell", 0))
+                strong_sell = _safe_count(row.get("strongSell", 0))
                 count = strong_buy + buy + hold + sell + strong_sell
                 scores = {
                     "Strong Buy": strong_buy * 2,
