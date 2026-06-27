@@ -4,6 +4,34 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-06-26 — Whole-Codebase Audit (#4) + Fixes
+
+**Focus**: Run a full audit of the clean codebase and fix everything it surfaced.
+
+### What changed (and why)
+- **Audit fanned out across four parallel lenses** (data/SQL, network/prices, views/QThread, domain/money), then findings consolidated and all fixed in one commit (`c5d9598`). With a clean tree the diff-based `/security-review` and `/code-review` skills have nothing to review, so the pass leaned on the project risk checklist + the review sub-agents.
+- **One real correctness bug**: `MainWindow._refresh_all` duck-types `refresh()`, but `PaymentsView`/`StocksView`/`StockTipsView`/`DebtSnowballView` only had private `_refresh`/`_load`, so a **DB restore reported success while those four tabs kept showing pre-restore data**. Added the public alias to all four.
+- **Security/data**: CSV exports now created `0600` up front (no world-readable window) with header cells also `_csv_safe`'d; `get_connection` is a closing `@contextmanager`.
+- **Correctness**: snowball pre-marks zero-balance debts so they don't inflate the rolling pool; tighter ticker regex rejects degenerate symbols; analyst-count cells guarded against NaN; unknown income frequency logged to stderr.
+- **Quality**: deduped right/center cell builders into `views/_table.py`; chart axes `deleteLater()`'d on rebuild; `StockTipDialog` frees its prior fetcher; `bill_dialog`/`debt_dialog` name validation aligned; models default `category` from `DEFAULT_CATEGORY`; stale `GOAL_NOTE` comment fixed.
+- 113 tests still green; offscreen smokes verified the fixes (validators, snowball, CSV perms, refresh hooks, MainWindow build/teardown, dialog validation).
+
+### Decisions
+- **Fixed the four views, not the gate** — added public `refresh()` aliases to preserve `_refresh_all`'s duck-typed pattern rather than special-casing it.
+- **`get_connection` wrapped, not all callers refactored** — a `@contextmanager` keeps `with conn` transaction semantics and adds deterministic close; all 60 callers already used `with`, so it was transparent.
+- **Snowball pre-mark over in-loop guard** — marking zero-balance debts `payoff_month=0` up front fixes both the phantom-payment roll-up and the None-in-sort risk in one place.
+
+### Issues / surprises
+- The stale-after-restore bug had been latent and even flagged as a "cautionary example" in past notes (`PaymentsView` has only `_refresh`) — but nobody had connected it to the restore path actually showing wrong data. The audit's verification of the restore flow is what surfaced it.
+
+### Next session
+- Net-worth trend view (still the top deferred item).
+- Optional: GUI eyeball of Charts/Expenses; decide whether the stacked over-time chart should also exclude Savings.
+
+**Commits**: `c5d9598` (1 commit) + this close
+
+---
+
 ## Session: 2026-06-22 — User-Managed Categories, Category Rename Migration, Savings-Calc Expenses, Two Skills
 
 **Focus**: Let the user manage their own spending categories, rename two of them cleanly, and make the savings calculator account for actual spending.
@@ -111,31 +139,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - (Optional) offscreen-Qt harness so the views can be smoke-tested.
 
 **Commits**: `96bb9c9` (1 commit) + this session-close
-
----
-
-## Session: 2026-06-15 — Test Coverage Beyond Repositories + Per-Ticker Fetch Feedback
-
-**Focus**: Extend the pytest suite past the repository layer and surface yfinance per-ticker fetch failures to the user.
-
-### What changed (and why)
-- Confirmed (no code change) that the package is already wired into `~/NixOS/flake.nix` as an input and installed on both the `gaming` and `natalie-laptop` hosts — `project-state.md` had been carrying this as an open "top priority" for six sessions; it's done.
-- Added four test modules (suite 36 → 69, all green): `test_db.py` (backup/restore/export-CSV/`_csv_safe`/`_ensure_column`), `test_snowball.py` (payoff, strategy ordering, extra/lump-sum, interest, empty), `test_budget.py` (all pay frequencies + `monthly_bill` recurrence), `test_prices.py` (`_call_with_timeout` plumbing). All reuse the existing autouse temp-file DB fixture.
-- Surfaced per-ticker fetch failures: `_call_with_timeout` now returns `(ok, value)` so a genuine empty result (delisted ticker → `ok=True, value=None`) is distinct from a timeout/error. `PriceFetcher`/`TipFetcher` collect failed tickers and emit a new `partial_error` signal; both stock views warn naming exactly which tickers couldn't be fetched.
-
-### Decisions
-- **`(ok, value)` tuple over a sentinel** — the existing code returned `None` for both "no data" and "fetch failed", so the two were indistinguishable. A boolean `ok` is the minimal change that lets the view decide whether to warn, and keeps `value` free to be a legitimate `None`.
-- **`partial_error` is a separate signal from `fetch_error`** — `fetch_error` means the whole fetch collapsed (e.g. yfinance import failed); `partial_error` means some tickers came back but others timed out. Different user messages, so different signals.
-- **Views stay untested for now** — extended coverage to the remaining pure modules; the PySide6 views need an offscreen-Qt harness, deferred as optional.
-
-### Issues / surprises
-- None. `_call_with_timeout`'s type change surfaced two Pyright `reportArgumentType` errors; fixed by making the helper generic (`Callable[[], _T] -> tuple[bool, _T | None]`).
-
-### Next session
-- Fix leaked daemon threads in `prices.py` (inject a `requests.Session` with native socket timeouts).
-- Add structured retry / rate-limit backoff for yfinance fetches.
-
-**Commits**: `43c4199` (1 commit) + this session-close
 
 ---
 

@@ -4,7 +4,7 @@ A personal finance desktop application for two users (bosko and natty). Tracks r
 
 ## Current Status
 
-Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. Spending categories are user-managed (a seeded `categories` table with an in-app Manage Categories dialog), and the Income tab's savings calculator nets out the current month's logged expenses. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 113-test pytest suite covers the repositories, models, and the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories` modules — including the price/tip fetcher QThreads and the category rename migration. Three audit passes (two security 2026-06-07, one full 2026-06-17) have been completed with all findings addressed.
+Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. Spending categories are user-managed (a seeded `categories` table with an in-app Manage Categories dialog), and the Income tab's savings calculator nets out the current month's logged expenses. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 113-test pytest suite covers the repositories, models, and the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories` modules — including the price/tip fetcher QThreads and the category rename migration. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed — the latest fixed a stale-data-after-restore bug across four tabs plus a batch of security/correctness/quality hardening.
 
 ## Features
 
@@ -19,7 +19,7 @@ Active development — ten tabs fully implemented (Dashboard, Bills, Payments, E
 - **Income** — Enter income sources at any frequency (weekly, biweekly, semimonthly, monthly, annual, or specific calendar days). All amounts are normalized to a monthly figure. The Monthly Budget summary subtracts both monthly bills **and this month's logged expenses** to show the "Extra Spending Money" actually left over. A savings-rate slider splits that remainder into a proportional save-vs-spend bar with monthly and annual projections.
 - **Goals** — Enter a savings goal (name, total price, target month). The app computes the required monthly contribution (`price / months_remaining`, rounded up to the cent) and auto-creates a recurring "Goal" bill so the commitment appears in the Bills and Dashboard tabs. Editing a goal updates its linked bill; deleting a goal (with confirmation) deletes its linked bill. An "Amount Left" column tracks how much of the goal price remains unfunded as payments accumulate. The "Afford By" date always snaps to the last day of the chosen month.
 - **Right-click context menus** — The data tables (Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
-- **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells sanitized against formula injection, each file `chmod 600`), and Quit (Ctrl+Q).
+- **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells — headers included — sanitized against formula injection, each file created `0600` so it's never briefly world-readable), and Quit (Ctrl+Q).
 - **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
 - **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix.
 
@@ -133,6 +133,14 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-06-26 — Whole-Codebase Audit (#4) + Fixes**
+
+- **Stale-data-after-restore bug fixed**: `Restore Database` reported success while the Payments, Stocks, Stock Tips, and Debt Snowball tabs kept showing pre-restore data — those four views only had private refresh methods, so the refresh-all gate skipped them. All views now expose a public `refresh()`.
+- **Security/data hardening**: CSV exports are created `0600` up front (no world-readable window) with header cells also sanitized; `get_connection()` is now a context manager that closes the connection deterministically.
+- **Correctness**: the Debt Snowball simulator no longer lets a zero-balance debt inflate the rolling payment pool; ticker validation rejects degenerate symbols (e.g. `A..B`, trailing separators); analyst-count cells are guarded against NaN; an unknown income frequency is logged rather than silently treated as monthly.
+- **Quality**: right/center table-cell builders deduped into `views/_table.py`; chart axes are deleted on rebuild; the stock-tip dialog frees its previous fetcher; bill/debt dialogs validate a non-empty name; models default their category from `DEFAULT_CATEGORY`.
+- Suite remains 113 tests, all green; fixes verified with headless offscreen-Qt smokes.
 
 **2026-06-22 — User-Managed Categories, Category Rename Migration, Savings-Calc Expenses**
 
