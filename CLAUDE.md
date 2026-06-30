@@ -27,12 +27,14 @@ Before doing a task by hand, check whether an existing skill already covers it a
 
 ## Project
 
-FinanceGuru is a personal finance desktop app for two users (bosko and natty). Feature areas:
+FinanceGuru is a personal finance desktop app for two users (bosko and natty). The original four feature areas are all built and shipped:
 
 1. **Bills** — recurring bill tracking and due dates
 2. **Payments** — payment history and logging
 3. **Stocks** — portfolio tracking
-4. **Stock tips** — recommendations (planned future phase)
+4. **Stock tips** — recommendations
+
+Additional feature areas built since: **Dashboard**, **Charts**, **Goals**, **Debt Snowball**, **Income**, a **Salary/savings calculator**, and user-managed **Categories**.
 
 ## Tech Stack
 
@@ -77,13 +79,13 @@ src/financeguru/
 
 ## NixOS Integration
 
-Once the app is functional, wire it into `~/NixOS/flake.nix` as an input:
+**Done** — FinanceGuru is wired into `~/NixOS/flake.nix` as an input and installed on the `gaming` and `natalie-laptop` hosts:
 
 ```nix
 financeguru.url = "github:CommanderBosko/FinanceGuru";
 ```
 
-Then add `inputs.financeguru.packages.x86_64-linux.default` to `environment.systemPackages` in the relevant host's `environment.nix`. The `qt6.wrapQtAppsHook` in `flake.nix` handles Qt plugin paths at install time.
+`inputs.financeguru.packages.x86_64-linux.default` is added to `environment.systemPackages` in each host's `environment.nix`. The `qt6.wrapQtAppsHook` in `flake.nix` handles Qt plugin paths at install time. When the package output changes, bump the input (`nix flake update financeguru` in the NixOS repo) and rebuild the affected hosts.
 
 ## Notes
 
