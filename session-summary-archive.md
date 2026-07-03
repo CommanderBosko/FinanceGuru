@@ -1,3 +1,29 @@
+## Session: 2026-06-15 (pm) — Eliminate prices.py Daemon-Thread Leak
+
+**Focus**: Close roadmap item #1 — the leaked daemon threads in `prices.py`.
+
+### What changed (and why)
+- Removed `_call_with_timeout` (and the `threading` import) — the daemon-thread-per-fetch wrapper *was* the leak: after its 15s join expired the orphaned thread kept running while yfinance's own request finished. Replaced with a direct `_safe_call(fn) -> (ok, value)`.
+- Added `_make_session()`: a `curl_cffi` session that preserves yfinance's Chrome impersonation but subclasses `request()` to cap every request's socket timeout at 8s. Both fetchers now pass `session=` into `yf.Ticker(...)`, verified to reach yfinance's request layer.
+- `TipFetcher._fetch_one` now returns `(failed, data)` so a capped-timeout/network error marks the ticker failed (via the existing `partial_error` signal), while a ticker with genuinely no analyst coverage is not flagged.
+- Rewrote `test_prices.py` to cover `_safe_call` and the session timeout cap. Suite 69 → 71, all green. Live smoke test: AAPL $296.42 in 1.4s, bogus ticker reported failed, MSFT tip returned real data — all through the capped session.
+
+### Decisions
+- **Approach: eliminate the thread layer, not just bound it.** The leak premise was outdated — yfinance 1.3.0 already has native timeouts + retries + 429 handling. So rather than keep `_call_with_timeout` as a belt-and-suspenders, dropped it entirely and lean on the native socket timeout. Cleaner and removes the whole nested-daemon-thread class.
+- **Keep curl_cffi, don't inject a plain `requests.Session`.** The roadmap note predates yfinance's curl_cffi move; a plain session would drop Chrome impersonation and invite Yahoo blocking. Subclassed the curl_cffi session instead.
+- **Cap in `request()`, not via session default.** yfinance passes `timeout=30` explicitly on every call, overriding any session-level default — clamping inside `request()` is the only effective lever.
+
+### Issues / surprises
+- Roadmap item #2 (retry / rate-limit backoff) is now **largely redundant** — yfinance 1.3.0 provides retry/backoff (`YfConfig.network.retries`) and `YFRateLimitError` on 429 out of the box. Flagged in project-state.md and saved to memory.
+
+### Next session
+- Reporting/charts tab (spending over time, net-worth trend) — now the top new-feature item.
+- (Optional) offscreen-Qt harness so the views can be smoke-tested.
+
+**Commits**: `96bb9c9` (1 commit) + this session-close
+
+---
+
 # Session Summary — Archive
 
 _Active log: [session-summary.md](session-summary.md). Older entries are appended here on rotation, most recent first._

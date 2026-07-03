@@ -4,6 +4,36 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-07-02 — Net-Worth Snapshots, Auto Backups, Smoke Tests, CI, Overdue Bills (closed 2026-07-03)
+
+**Focus**: "What would you improve?" → all five answers shipped as one scoped effort: snapshot data layer, rotating backups, view smoke tests, flake-check CI, and overdue bills that stop vanishing.
+
+### What changed (and why)
+- **Daily net-worth snapshots** (`snapshots` table + repo, captured at launch and after a full price refresh, same-day upsert): the trend chart can't be back-filled — stocks store only purchase price — so every week without the table was history lost forever. Data layer ships now; the chart comes once history has accrued.
+- **Automatic rotating backups**: `auto_backup()` at launch, deliberately *before* `init_db()` so the copy captures the pre-migration database; skip-if-today's-exists; keep 14; pruning can never touch `.pre-restore-*.bak` safety copies. Protects against the failure mode manual backups never cover.
+- **Overdue one-time/yearly bills persist until paid** as "Overdue (Month)" dashboard rows, cycle-scoped paid check (a 2025 payment can't satisfy the 2026 cycle), counted in Total/Remaining. Was silently dropping unpaid bills once their month passed — late-fee territory.
+- **View smoke tests** (`test_views_smoke.py` + shared session `QApplication` fixture): MainWindow + every tab constructed offscreen, public `refresh()` contract locked in — the exact contract whose violation was audit #4's only real bug.
+- **CI**: `checks.x86_64-linux.{package,pytest}` in the flake (sandboxed offscreen pytest) + a thin GitHub Action running `nix flake check`, so local verification and CI are the same command. 151 tests total (was 113).
+- Also in this close range: `98dd868` (2026-06-29, `/improve-system` maintenance — CLAUDE.md sync + pytest permission allowlist).
+
+### Decisions
+- Goal savings computed live via `goals.bill_id`; deleted goals drop out of future snapshots, past rows immutable. Accepted: "tracked net worth" (no cash/property), per-machine gap-filled series.
+- Launch hooks in `main.py`, not `MainWindow`, so tests constructing the window never write backups/snapshots.
+- Reviewer's TEXT-money-column suggestion rejected — project convention is `REAL` + the `Decimal` adapter.
+
+### Issues / surprises
+- The session **hit its usage limit** right after implementation — verification, commit, and close all happened next session (2026-07-03). Everything then verified clean: 151 tests, `nix flake check`, and the real launch sequence driven twice against a throwaway `$HOME` (backup rotation, snapshot dedup, 10 tabs offscreen).
+- The brief-review agent found 7 genuine ambiguities pre-build (goal-deletion semantics, backup ordering, cycle scoping) — settling them up front meant zero mid-build design stalls.
+
+### Next session
+- Check the first real CI run went green on GitHub Actions.
+- Net-worth trend chart over the accruing snapshots.
+- Bump the `financeguru` input in the NixOS repo + rebuild hosts so the machines start accruing snapshots/backups.
+
+**Commits**: `98dd868..e60442a` (2 commits) + this close
+
+---
+
 ## Session: 2026-06-26 — Whole-Codebase Audit (#4) + Fixes
 
 **Focus**: Run a full audit of the clean codebase and fix everything it surfaced.
@@ -113,32 +143,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - GUI eyeball of the new tabs; decide whether the stacked chart should also exclude Savings.
 
 **Commits**: `714adcd` (feature) + this session-close
-
----
-
-## Session: 2026-06-15 (pm) — Eliminate prices.py Daemon-Thread Leak
-
-**Focus**: Close roadmap item #1 — the leaked daemon threads in `prices.py`.
-
-### What changed (and why)
-- Removed `_call_with_timeout` (and the `threading` import) — the daemon-thread-per-fetch wrapper *was* the leak: after its 15s join expired the orphaned thread kept running while yfinance's own request finished. Replaced with a direct `_safe_call(fn) -> (ok, value)`.
-- Added `_make_session()`: a `curl_cffi` session that preserves yfinance's Chrome impersonation but subclasses `request()` to cap every request's socket timeout at 8s. Both fetchers now pass `session=` into `yf.Ticker(...)`, verified to reach yfinance's request layer.
-- `TipFetcher._fetch_one` now returns `(failed, data)` so a capped-timeout/network error marks the ticker failed (via the existing `partial_error` signal), while a ticker with genuinely no analyst coverage is not flagged.
-- Rewrote `test_prices.py` to cover `_safe_call` and the session timeout cap. Suite 69 → 71, all green. Live smoke test: AAPL $296.42 in 1.4s, bogus ticker reported failed, MSFT tip returned real data — all through the capped session.
-
-### Decisions
-- **Approach: eliminate the thread layer, not just bound it.** The leak premise was outdated — yfinance 1.3.0 already has native timeouts + retries + 429 handling. So rather than keep `_call_with_timeout` as a belt-and-suspenders, dropped it entirely and lean on the native socket timeout. Cleaner and removes the whole nested-daemon-thread class.
-- **Keep curl_cffi, don't inject a plain `requests.Session`.** The roadmap note predates yfinance's curl_cffi move; a plain session would drop Chrome impersonation and invite Yahoo blocking. Subclassed the curl_cffi session instead.
-- **Cap in `request()`, not via session default.** yfinance passes `timeout=30` explicitly on every call, overriding any session-level default — clamping inside `request()` is the only effective lever.
-
-### Issues / surprises
-- Roadmap item #2 (retry / rate-limit backoff) is now **largely redundant** — yfinance 1.3.0 provides retry/backoff (`YfConfig.network.retries`) and `YFRateLimitError` on 429 out of the box. Flagged in project-state.md and saved to memory.
-
-### Next session
-- Reporting/charts tab (spending over time, net-worth trend) — now the top new-feature item.
-- (Optional) offscreen-Qt harness so the views can be smoke-tested.
-
-**Commits**: `96bb9c9` (1 commit) + this session-close
 
 ---
 
