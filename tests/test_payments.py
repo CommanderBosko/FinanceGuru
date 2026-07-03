@@ -70,6 +70,24 @@ def test_total_paid_by_bill_sums_per_bill():
     assert totals == {a: Decimal("160.00"), b: Decimal("40.00")}
 
 
+def test_latest_paid_dates_empty_when_no_payments():
+    _bill()
+    assert payments.latest_paid_dates() == {}
+
+
+def test_latest_paid_dates_picks_max_per_bill_and_ignores_null_bill_id():
+    a = _bill()
+    b = bills.add(Bill(name="Water", amount=Decimal("40.00"), due_day=10))
+    payments.add(Payment(amount=Decimal("80"), paid_date="2026-01-15", bill_id=a))
+    payments.add(Payment(amount=Decimal("80"), paid_date="2026-06-15", bill_id=a))
+    payments.add(Payment(amount=Decimal("80"), paid_date="2026-03-15", bill_id=a))
+    payments.add(Payment(amount=Decimal("40"), paid_date="2026-02-01", bill_id=b))
+    # A payment with no bill never appears in the per-bill map.
+    payments.add(Payment(amount=Decimal("5"), paid_date="2026-12-31", bill_id=None))
+
+    assert payments.latest_paid_dates() == {a: "2026-06-15", b: "2026-02-01"}
+
+
 def test_get_paid_bill_ids_for_month_filters_by_prefix():
     a = _bill()
     b = bills.add(Bill(name="Water", amount=Decimal("40.00"), due_day=10))

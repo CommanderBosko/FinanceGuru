@@ -58,13 +58,30 @@ class DashboardView(QWidget):
         # Monthly bills are due every month; yearly bills in their due_month;
         # one-time bills only in their exact due_year/due_month (see
         # Bill.is_due_in).
-        bills = [
-            b for b in bill_repo.get_all()
-            if b.is_active and b.is_due_in(today.year, today.month)
-        ]
+        active = [b for b in bill_repo.get_all() if b.is_active]
+        bills = [b for b in active if b.is_due_in(today.year, today.month)]
+
+        # Carried-over rows: yearly/one-time bills whose most recent due
+        # cycle passed unpaid (see Bill.overdue_carryover_start).
+        latest_paid = payment_repo.latest_paid_dates()
+        carried = []
+        for b in active:
+            cycle_start = b.overdue_carryover_start(today.year, today.month)
+            if cycle_start is None:
+                continue
+            if b.recurrence == "one-time":
+                # One-time bills are paid once — any payment ever (even one
+                # made early) settles them.
+                unpaid = b.id not in latest_paid
+            else:
+                # Yearly: a payment from a previous year's cycle must not
+                # satisfy this year's, so require one on/after cycle start.
+                unpaid = latest_paid.get(b.id, "") < cycle_start
+            if unpaid:
+                carried.append((b, cycle_start))
 
         self._month_label.setText(today.strftime("%B %Y"))
-        self._bills_table.setRowCount(len(bills))
+        self._bills_table.setRowCount(len(bills) + len(carried))
 
         total = ZERO
         paid = ZERO
@@ -102,6 +119,27 @@ class DashboardView(QWidget):
             total += bill.amount
             if is_paid:
                 paid += bill.amount
+
+        for offset, (bill, cycle_start) in enumerate(carried):
+            row = len(bills) + offset
+            month_abbr = date(int(cycle_start[:4]), int(cycle_start[5:7]), 1).strftime("%b")
+
+            amount_item = QTableWidgetItem(f"${bill.amount:,.2f}")
+            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            due_item = QTableWidgetItem(f"{month_abbr} {bill.due_day}")
+            due_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            status_item = QTableWidgetItem(f"Overdue ({month_abbr})")
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            for item in (amount_item, due_item, status_item):
+                item.setForeground(_RED)
+
+            self._bills_table.setItem(row, 0, QTableWidgetItem(bill.name))
+            self._bills_table.setItem(row, 1, amount_item)
+            self._bills_table.setItem(row, 2, due_item)
+            self._bills_table.setItem(row, 3, status_item)
+
+            total += bill.amount
 
         remaining = total - paid
         self._lbl_total.setText(f"Total Bills\n${total:,.2f}")

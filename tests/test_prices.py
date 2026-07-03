@@ -87,14 +87,7 @@ def test_session_keeps_a_shorter_timeout(monkeypatch):
 # refactored signal emission on the subclasses, and stop_fetcher's teardown
 # contract. The network is stubbed out so they're fast and deterministic.
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
-
-
-@pytest.fixture
-def qapp():
-    # QThread signals are delivered via the event loop, so a (non-GUI) app must
-    # exist. Reuse one across tests; QCoreApplication is a process singleton.
-    return QCoreApplication.instance() or QCoreApplication([])
+from PySide6.QtCore import QEventLoop, QTimer
 
 
 def _run_to_finish(fetcher, timeout_ms=5000):

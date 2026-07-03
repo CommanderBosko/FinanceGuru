@@ -1,5 +1,6 @@
 import csv
 import sqlite3
+from datetime import datetime
 from decimal import Decimal
 
 import pytest
@@ -79,6 +80,63 @@ def test_restore_rejects_a_non_financeguru_sqlite_file(tmp_path):
 
     # The live database is untouched.
     assert [b.name for b in bills.get_all()] == ["Power"]
+
+
+# --- auto_backup -----------------------------------------------------------
+
+def test_auto_backup_writes_dated_owner_only_copy():
+    _seed()
+    dest = db.auto_backup()
+
+    assert dest is not None
+    assert dest.parent == db.DB_DIR / "backups"
+    assert dest.name == f"financeguru-auto-{datetime.now():%Y%m%d}.db"
+    assert oct(dest.stat().st_mode)[-3:] == "600"
+    assert oct(dest.parent.stat().st_mode)[-3:] == "700"
+    con = sqlite3.connect(dest)
+    try:
+        assert con.execute("SELECT name FROM bills").fetchall() == [("Power",)]
+    finally:
+        con.close()
+
+
+def test_auto_backup_skips_when_today_already_backed_up():
+    _seed()
+    first = db.auto_backup()
+    assert first is not None
+    before = first.read_bytes()
+
+    # New data after the backup must NOT be folded in by a second launch —
+    # skip-if-exists is what keeps a post-restore relaunch from clobbering
+    # the day's earlier, still-good copy.
+    bills.add(Bill(name="Extra", amount=Decimal("5.00"), due_day=1))
+    assert db.auto_backup() is None
+    assert first.read_bytes() == before
+
+
+def test_auto_backup_returns_none_without_a_database():
+    db.DB_PATH.unlink()
+    assert db.auto_backup() is None
+    assert not (db.DB_DIR / "backups").exists()
+
+
+def test_auto_backup_prunes_only_its_own_rotation():
+    _seed()
+    backups_dir = db.DB_DIR / "backups"
+    backups_dir.mkdir()
+    # 20 older rotation files plus an unrelated pre-restore safety copy.
+    for day in range(1, 21):
+        (backups_dir / f"financeguru-auto-202605{day:02d}.db").touch()
+    keeper = backups_dir / "finance.pre-restore-20260501-120000.bak"
+    keeper.touch()
+
+    db.auto_backup()
+
+    rotation = sorted(p.name for p in backups_dir.glob("financeguru-auto-*.db"))
+    assert len(rotation) == db._AUTO_BACKUP_KEEP
+    assert rotation[-1] == f"financeguru-auto-{datetime.now():%Y%m%d}.db"
+    assert rotation[0] == "financeguru-auto-20260508.db"  # 13 newest of May kept
+    assert keeper.exists()
 
 
 # --- export_all_csv --------------------------------------------------------

@@ -57,6 +57,20 @@ def total_paid_by_bill() -> dict[int, Decimal]:
     return {row["bill_id"]: to_decimal(row["total"]) for row in rows}
 
 
+def latest_paid_dates() -> dict[int, str]:
+    """Most recent paid_date per bill, keyed by bill_id.
+
+    Used by the Dashboard to decide whether a carried-over yearly/one-time
+    bill's missed cycle has already been paid.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT bill_id, MAX(paid_date) AS latest FROM payments"
+            " WHERE bill_id IS NOT NULL GROUP BY bill_id"
+        ).fetchall()
+    return {row["bill_id"]: row["latest"] for row in rows}
+
+
 def get_paid_bill_ids_for_month(year: int, month: int) -> set[int]:
     prefix = f"{year}-{month:02d}-"
     with get_connection() as conn:

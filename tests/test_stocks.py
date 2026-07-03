@@ -42,3 +42,31 @@ def test_update_and_delete():
 
     stocks.delete(sid)
     assert stocks.get_all() == []
+
+
+def test_set_last_prices_round_trip_and_unknown_ticker_noop():
+    stocks.add(Stock(ticker="AAPL", shares=Decimal("10"),
+                     purchase_price=Decimal("150.25"),
+                     purchase_date="2025-01-15"))
+    s = stocks.get_all()[0]
+    assert s.last_price is None and s.last_price_date is None
+
+    stocks.set_last_prices({"AAPL": Decimal("199.99"), "GHOST": Decimal("1")},
+                           "2026-07-02")
+    s = stocks.get_all()[0]
+    assert s.last_price == Decimal("199.99")
+    assert isinstance(s.last_price, Decimal)
+    assert s.last_price_date == "2026-07-02"
+
+
+def test_update_preserves_last_price():
+    sid = stocks.add(Stock(ticker="AAPL", shares=Decimal("10"),
+                           purchase_price=Decimal("150.25"),
+                           purchase_date="2025-01-15"))
+    stocks.set_last_prices({"AAPL": Decimal("180")}, "2026-07-01")
+    stocks.update(Stock(id=sid, ticker="AAPL", shares=Decimal("12"),
+                        purchase_price=Decimal("150.25"),
+                        purchase_date="2025-01-15"))
+    s = stocks.get_all()[0]
+    assert s.last_price == Decimal("180")
+    assert s.last_price_date == "2026-07-01"

@@ -8,9 +8,27 @@ the real ``init_db()`` schema so foreign-key cascades and the Decimal<->REAL
 round-trip behave exactly as in production.
 """
 
+import os
+
 import pytest
 
 import financeguru.db as db
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    """Process-wide Qt application, shared by every test that needs one.
+
+    Qt allows a single application object per process, and a plain
+    QCoreApplication would block widget tests from ever creating the full
+    QApplication — so the one shared instance is a QApplication running on the
+    offscreen platform (headless; overrides the devShell's "wayland;xcb").
+    QThread signal tests only need its event loop and work with it unchanged.
+    """
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtWidgets import QApplication
+
+    return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture(autouse=True)

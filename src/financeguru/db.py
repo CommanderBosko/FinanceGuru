@@ -196,6 +196,22 @@ def init_db() -> None:
                 notes       TEXT
             );
 
+            -- Daily "tracked net worth" history: stock value − debt balances +
+            -- cumulative goal contributions (cash/bank isn't tracked anywhere).
+            -- One row per calendar day, upserted on launch and after each price
+            -- refresh; accrues so the future trend chart has data to plot.
+            -- Deliberately NOT in _CORE_TABLES: that set is the identity check
+            -- for restores, and adding to it would reject older, perfectly
+            -- valid backups (init_db() after restore creates this table).
+            CREATE TABLE IF NOT EXISTS snapshots (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                snap_date    TEXT    NOT NULL UNIQUE,
+                stock_value  REAL    NOT NULL,
+                debt_total   REAL    NOT NULL,
+                goal_savings REAL    NOT NULL,
+                net_worth    REAL    NOT NULL
+            );
+
             -- User-managed spending categories. Bills/expenses store their
             -- category as free text (not a foreign key), so deleting a category
             -- here only removes it from the pickers; existing rows keep their
@@ -213,6 +229,8 @@ def init_db() -> None:
         _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
         _ensure_column(conn, "bills", "due_month", "due_month INTEGER")
         _ensure_column(conn, "bills", "due_year", "due_year INTEGER")
+        _ensure_column(conn, "stocks", "last_price", "last_price REAL")
+        _ensure_column(conn, "stocks", "last_price_date", "last_price_date TEXT")
 
         # Apply category renames before seeding so the new name is already
         # present and the INSERT OR IGNORE below doesn't re-add the old one.
@@ -251,6 +269,42 @@ def backup_database(dest: Path) -> None:
         os.chmod(dest, 0o600)
     except OSError:
         pass
+
+
+_AUTO_BACKUP_KEEP = 14
+_AUTO_BACKUP_GLOB = "financeguru-auto-*.db"
+
+
+def auto_backup() -> Path | None:
+    """Silent daily rotating backup, run at every launch.
+
+    Called before ``init_db()`` so the copy captures the pre-migration
+    database — if a new release ships a bad migration, today's backup still
+    holds the untouched data. Skip-if-exists rather than overwrite, so
+    relaunching after a restore can't clobber the day's earlier, still-good
+    copy. Pruning only ever touches this function's own rotation
+    (``financeguru-auto-*.db``); restore's ``.pre-restore-*.bak`` safety
+    copies are never candidates. Returns the path written, or None when
+    there is no database yet or today's backup already exists.
+    """
+    if not DB_PATH.exists():
+        return None
+    backups_dir = DB_DIR / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(backups_dir, 0o700)
+    except OSError:
+        pass
+    dest = backups_dir / f"financeguru-auto-{datetime.now():%Y%m%d}.db"
+    if dest.exists():
+        return None
+    backup_database(dest)
+    # The date-stamped names sort chronologically, so newest-first is a
+    # plain reverse sort; everything past the keep window is dropped.
+    rotation = sorted(backups_dir.glob(_AUTO_BACKUP_GLOB), reverse=True)
+    for stale in rotation[_AUTO_BACKUP_KEEP:]:
+        stale.unlink(missing_ok=True)
+    return dest
 
 
 def restore_database(src: Path) -> None:

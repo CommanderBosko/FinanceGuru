@@ -1,3 +1,5 @@
+from datetime import date
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -8,6 +10,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.stock import Stock
 from financeguru.money import ZERO, to_decimal
 from financeguru.prices import PriceFetcher, stop_fetcher
+from financeguru.repositories import snapshots as snapshot_repo
 from financeguru.repositories import stocks as stock_repo
 from financeguru.views._table import center, right
 from financeguru.views.context_menu import attach_row_menu
@@ -199,6 +202,14 @@ class StocksView(QWidget):
 
     def _on_prices_ready(self, prices: dict) -> None:
         self._prices = prices
+        # Persist the fetched prices and fold them into today's net-worth
+        # snapshot. Runs once per completed fetch (this signal fires after all
+        # tickers finish); failed tickers are absent from `prices` and keep
+        # their previously stored price.
+        fetched = {t: to_decimal(p) for t, p in prices.items() if p is not None}
+        if fetched:
+            stock_repo.set_last_prices(fetched, date.today().isoformat())
+            snapshot_repo.capture()
         self._refresh()
         self._btn_refresh.setEnabled(True)
         self._btn_refresh.setText("Refresh Prices")

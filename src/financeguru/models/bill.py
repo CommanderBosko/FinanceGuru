@@ -36,3 +36,30 @@ class Bill:
         if self.recurrence == "one-time":
             return self.due_year == year and self.due_month == month
         return False
+
+    def overdue_carryover_start(self, year: int, month: int) -> str | None:
+        """First-of-month ISO date ("YYYY-MM-01") of this bill's most recent
+        missed-able due cycle strictly before the given month, or None.
+
+        Purely about recurrence — ignores active state and payment status
+        (whether the cycle was actually paid is the caller's concern).
+        """
+        if self.recurrence == "yearly":
+            # Carryover is limited to the current calendar year: a freshly
+            # added yearly bill whose season hasn't come yet this year must
+            # not show as Overdue, so previous years never carry over (an
+            # unpaid December yearly drops off in January — accepted
+            # trade-off).
+            if self.due_month is not None and self.due_month < month:
+                return f"{year}-{self.due_month:02d}-01"
+            return None
+        if self.recurrence == "one-time":
+            # Carries across year boundaries — the user explicitly entered
+            # this date, so it stays overdue until paid.
+            if (self.due_year is not None and self.due_month is not None
+                    and (self.due_year, self.due_month) < (year, month)):
+                return f"{self.due_year}-{self.due_month:02d}-01"
+            return None
+        # Monthly bills are due every month and are already covered by the
+        # current-month logic.
+        return None

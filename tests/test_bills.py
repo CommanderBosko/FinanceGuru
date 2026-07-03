@@ -104,6 +104,45 @@ def test_is_due_in_by_recurrence():
     assert once.is_due_in(2026, 8) is False
 
 
+def test_overdue_carryover_start_monthly_is_always_none():
+    monthly = Bill(name="Rent", amount=Decimal("1"), due_day=1)
+    assert monthly.overdue_carryover_start(2026, 7) is None
+    assert monthly.overdue_carryover_start(2027, 1) is None
+
+
+def test_overdue_carryover_start_yearly_limited_to_current_year():
+    yearly = Bill(name="Insurance", amount=Decimal("1"), due_day=15,
+                  due_month=3, recurrence="yearly")
+    # Earlier this year → carries over.
+    assert yearly.overdue_carryover_start(2026, 7) == "2026-03-01"
+    # Same month or later this year → nothing missed yet.
+    assert yearly.overdue_carryover_start(2026, 3) is None
+    assert yearly.overdue_carryover_start(2026, 2) is None
+    # December yearly viewed in January: previous years never carry over.
+    december = Bill(name="Dues", amount=Decimal("1"), due_day=1,
+                    due_month=12, recurrence="yearly")
+    assert december.overdue_carryover_start(2027, 1) is None
+    # A yearly missing its due_month can't carry over.
+    no_month = Bill(name="Odd", amount=Decimal("1"), due_day=1,
+                    recurrence="yearly")
+    assert no_month.overdue_carryover_start(2026, 7) is None
+
+
+def test_overdue_carryover_start_one_time_crosses_years():
+    once = Bill(name="Roof", amount=Decimal("1"), due_day=20,
+                due_month=9, due_year=2025, recurrence="one-time")
+    # Past year → still carries over.
+    assert once.overdue_carryover_start(2026, 7) == "2025-09-01"
+    # Earlier month of the same year → carries over.
+    march = Bill(name="Fix", amount=Decimal("1"), due_day=5,
+                 due_month=3, due_year=2026, recurrence="one-time")
+    assert march.overdue_carryover_start(2026, 7) == "2026-03-01"
+    # Current month or future → nothing missed.
+    assert march.overdue_carryover_start(2026, 3) is None
+    assert march.overdue_carryover_start(2026, 2) is None
+    assert march.overdue_carryover_start(2025, 12) is None
+
+
 def test_category_round_trips_and_defaults_to_other():
     # Explicit category survives add/get_all.
     with_cat = Bill(name="Internet", amount=Decimal("60.00"), due_day=10,

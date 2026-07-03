@@ -44,6 +44,29 @@
       };
     };
 
+    checks.${system} = {
+      # `nix flake check` should also prove the package still builds.
+      package = self.packages.${system}.default;
+
+      pytest = pkgs.runCommand "financeguru-pytest"
+        {
+          nativeBuildInputs = [
+            (python.withPackages (ps: (pythonDeps ps) ++ [ ps.pytest ]))
+          ];
+          # Qt aborts in the sandbox without a usable fontconfig setup.
+          FONTCONFIG_FILE = pkgs.makeFontsConf {
+            fontDirectories = [ pkgs.dejavu_fonts ];
+          };
+        } ''
+        export HOME=$TMPDIR                # Qt needs a writable ~/.cache
+        export QT_QPA_PLATFORM=offscreen   # headless; devShell's "wayland;xcb" doesn't apply here
+        export PYTHONPATH=${self}/src
+        cd $TMPDIR
+        pytest ${self}/tests -p no:cacheprovider
+        touch $out
+      '';
+    };
+
     devShells.${system}.default = pkgs.mkShell {
       packages = [
         (python.withPackages (ps: (pythonDeps ps) ++ [ ps.pytest ]))
