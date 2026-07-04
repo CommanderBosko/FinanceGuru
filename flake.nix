@@ -74,10 +74,21 @@
         pkgs.hicolor-icon-theme
       ];
 
+      # Qt6's xcb platform plugin dlopens libxcb-cursor.so at runtime; the
+      # packaged output gets this for free from wrapQtAppsHook, but the
+      # devShell's raw `python -m financeguru.main` needs it on LD_LIBRARY_PATH.
+      #
+      # QT_PLUGIN_PATH must NOT inherit from the login shell: on a KDE Plasma
+      # session it already points at the system Qt (a different qtbase build
+      # than the one pyside6 here links against), so the xcb/wayland plugins
+      # found there fail to load with an ABI mismatch ("found... but could
+      # not load"). Pin it to this flake's own qtbase plugins instead.
       shellHook = ''
         export QT_QPA_PLATFORM="wayland;xcb"
         export PYTHONPATH="$PWD/src:$PYTHONPATH"
         export XDG_DATA_DIRS="${pkgs.adwaita-icon-theme}/share:${pkgs.hicolor-icon-theme}/share:$XDG_DATA_DIRS"
+        export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.libxcb-cursor ]}:$LD_LIBRARY_PATH"
+        export QT_PLUGIN_PATH="${pkgs.qt6.qtbase}/lib/qt-6/plugins"
       '';
     };
   };
