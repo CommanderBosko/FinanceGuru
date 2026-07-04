@@ -4,6 +4,28 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-07-04 — devShell Qt Crash Fix + `/improve-system` Maintenance
+
+**Focus**: Fix `python -m financeguru.main` aborting at startup in `nix develop`, then run a full `/improve-system` maintenance sweep.
+
+### What changed (and why)
+- **Fixed the devShell Qt platform plugin crash** (`flake.nix`): `LD_LIBRARY_PATH` now includes `pkgs.libxcb-cursor` (the xcb plugin dlopens `libxcb-cursor.so` at runtime), and `QT_PLUGIN_PATH` is pinned to `pkgs.qt6.qtbase`'s own plugin dir instead of inheriting the KDE Plasma login shell's value, which pointed at a different, ABI-incompatible qtbase build.
+- **`/improve-system` full sweep**: added `Bash(nix develop *)`, `Bash(nix eval *)`, `Bash(nix flake check)`, `mcp__nixos__nix` to `.claude/settings.json`'s allowlist (usage-ranked from recent transcripts); confirmed all 4 project-local skills, all 4 CLAUDE.md standing rules, and no misfiring skills — everything else came back clean.
+
+### Decisions
+- Root-caused with `coredumpctl` + `gdb` rather than guessing — the backtrace (`QApplicationPrivate::init()` → `qFatal`) plus `ldd`/`QT_PLUGIN_PATH` inspection pinned the exact ABI mismatch (system `qtbase-6.11.1` vs. project `qtbase-6.11.0`).
+- Left the remaining `union.general` KDE-theme-plugin and Wayland icon-pixmap console warnings alone — confirmed cosmetic (even `dolphin` hits variants of this) and not a regression from the fix.
+
+### Issues / surprises
+- The Bash tool's own sandbox couldn't reproduce the crash at all (silent abort, no captured output) until run with `dangerouslyDisableSandbox` — the real display/session access mattered for reproducing a GUI startup crash.
+
+### Next session
+- (unrelated to this session) Check CI went green on GitHub Actions; build the net-worth trend chart; bump the `financeguru` input in the NixOS repo.
+
+**Commits**: `2b9efdc..fadd318` (2 commits)
+
+---
+
 ## Session: 2026-07-02 — Net-Worth Snapshots, Auto Backups, Smoke Tests, CI, Overdue Bills (closed 2026-07-03)
 
 **Focus**: "What would you improve?" → all five answers shipped as one scoped effort: snapshot data layer, rotating backups, view smoke tests, flake-check CI, and overdue bills that stop vanishing.
@@ -114,35 +136,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - Optional: decide whether past-due one-time bills should keep showing on the dashboard.
 
 **Commits**: `a323e87..e63a4f9` (5 commits + this close)
-
----
-
-## Session: 2026-06-16 — Expense Tracking Layer + Spending Charts Tab
-
-**Focus**: Ship the top roadmap item — a reporting/charts tab — starting with spending-over-time.
-
-### What changed (and why)
-- Scoped the work end-to-end first (`/interview` → brief at `docs/charts-tab-brief.md`, second-AI reviewed). The interview turned "a charts tab" into two pieces: an arbitrary-expense layer + the charts that read it.
-- **Data layer**: new `categories.py` (fixed category list + `GOAL_NOTE`/`SAVINGS_CATEGORY`, single source of truth), `category` column on `bills` (+ migration) and a new `expenses` table, `Expense` model + repo, and `reporting.py` with `monthly_spending(window=12)` / `category_breakdown(year, month)`.
-- **UI**: Expenses tab (CRUD), category combobox on the bill dialog, and a Charts tab (QtCharts — stacked by-category bars over 12 months + a per-month breakdown pie). Wired both into `main_window` (8 → 10 tabs).
-- Built the data layer + its tests myself (the spending math is the load-bearing part), then fanned the UI/test work out to 3 parallel sub-agents against fixed interface contracts.
-- Mid-session the user asked to drop the Total↔By-category toggle — the over-time chart is now always stacked by category.
-
-### Decisions
-- Spending universe = **all payments + all expenses** (goal contributions are already payments — categorize a `notes='Goal'` payment as Savings, don't add a third addend = no double-count).
-- **Savings excluded from the monthly total** but shown in the breakdown (saving isn't spending). User decision.
-- Category = plain `TEXT` column + Python constant, no categories table/management UI (v1). `expenses` added to `_CORE_TABLES` (pre-feature backups now rejected on restore — accepted).
-- `reporting.py` is standalone (cross-cuts payments+expenses+bills); sums in `Decimal`, floats only at the QtCharts boundary.
-
-### Issues / surprises
-- The reviewer caught that the "Goal" bill is **not** hidden — it's an ordinary bill tagged `notes='Goal'` — which corrected the spending-universe framing before any code was written.
-- QtCharts imports cleanly in `nix develop` — no flake change needed.
-
-### Next session
-- Net-worth trend view (the deferred charts phase).
-- GUI eyeball of the new tabs; decide whether the stacked chart should also exclude Savings.
-
-**Commits**: `714adcd` (feature) + this session-close
 
 ---
 

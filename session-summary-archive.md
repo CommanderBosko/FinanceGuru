@@ -1,3 +1,32 @@
+## Session: 2026-06-16 — Expense Tracking Layer + Spending Charts Tab
+
+**Focus**: Ship the top roadmap item — a reporting/charts tab — starting with spending-over-time.
+
+### What changed (and why)
+- Scoped the work end-to-end first (`/interview` → brief at `docs/charts-tab-brief.md`, second-AI reviewed). The interview turned "a charts tab" into two pieces: an arbitrary-expense layer + the charts that read it.
+- **Data layer**: new `categories.py` (fixed category list + `GOAL_NOTE`/`SAVINGS_CATEGORY`, single source of truth), `category` column on `bills` (+ migration) and a new `expenses` table, `Expense` model + repo, and `reporting.py` with `monthly_spending(window=12)` / `category_breakdown(year, month)`.
+- **UI**: Expenses tab (CRUD), category combobox on the bill dialog, and a Charts tab (QtCharts — stacked by-category bars over 12 months + a per-month breakdown pie). Wired both into `main_window` (8 → 10 tabs).
+- Built the data layer + its tests myself (the spending math is the load-bearing part), then fanned the UI/test work out to 3 parallel sub-agents against fixed interface contracts.
+- Mid-session the user asked to drop the Total↔By-category toggle — the over-time chart is now always stacked by category.
+
+### Decisions
+- Spending universe = **all payments + all expenses** (goal contributions are already payments — categorize a `notes='Goal'` payment as Savings, don't add a third addend = no double-count).
+- **Savings excluded from the monthly total** but shown in the breakdown (saving isn't spending). User decision.
+- Category = plain `TEXT` column + Python constant, no categories table/management UI (v1). `expenses` added to `_CORE_TABLES` (pre-feature backups now rejected on restore — accepted).
+- `reporting.py` is standalone (cross-cuts payments+expenses+bills); sums in `Decimal`, floats only at the QtCharts boundary.
+
+### Issues / surprises
+- The reviewer caught that the "Goal" bill is **not** hidden — it's an ordinary bill tagged `notes='Goal'` — which corrected the spending-universe framing before any code was written.
+- QtCharts imports cleanly in `nix develop` — no flake change needed.
+
+### Next session
+- Net-worth trend view (the deferred charts phase).
+- GUI eyeball of the new tabs; decide whether the stacked chart should also exclude Savings.
+
+**Commits**: `714adcd` (feature) + this session-close
+
+---
+
 ## Session: 2026-06-15 (pm) — Eliminate prices.py Daemon-Thread Leak
 
 **Focus**: Close roadmap item #1 — the leaked daemon threads in `prices.py`.

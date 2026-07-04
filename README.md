@@ -144,6 +144,10 @@ share/
 
 ## Recent Changes
 
+**2026-07-04 — devShell Startup Fix**
+
+- **Fixed `nix develop` + `python -m financeguru.main` aborting at launch** with "Could not load the Qt platform plugin" for both `wayland` and `xcb`. The devShell now pins `LD_LIBRARY_PATH` (for `libxcb-cursor.so`, which the xcb plugin needs at runtime) and `QT_PLUGIN_PATH` (to this flake's own `qtbase`, so a KDE Plasma login shell's system Qt plugins — a different, ABI-incompatible build — can no longer shadow it) in `flake.nix`'s `shellHook`.
+
 **2026-07-02 — Net-Worth Snapshots, Auto Backups, View Smoke Tests, CI, Overdue Bills**
 
 - **Daily net-worth snapshots**: a new `snapshots` table records tracked net worth (stock value − debt total + goal savings) once per day — captured at launch and updated after a full price refresh — so the future trend chart has history to draw from day one. Goal savings are computed live from goal-linked payments; past rows are immutable.
@@ -161,15 +165,7 @@ share/
 - **Quality**: right/center table-cell builders deduped into `views/_table.py`; chart axes are deleted on rebuild; the stock-tip dialog frees its previous fetcher; bill/debt dialogs validate a non-empty name; models default their category from `DEFAULT_CATEGORY`.
 - Suite remains 113 tests, all green; fixes verified with headless offscreen-Qt smokes.
 
-**2026-06-22 — User-Managed Categories, Category Rename Migration, Savings-Calc Expenses**
-
-- **User-managed categories**: promoted spending categories from a fixed Python list to a seeded `categories` table with a `Category` model, a `categories` repository, and a "Manage Categories…" dialog (add/rename/delete) launched from the Expenses tab. Savings and Other are protected (the reporting layer hard-codes them). Bill/expense pickers and the charts read the live list, so additions appear without a restart. Category columns stay free text, so deleting a category only removes it from the pickers.
-- **Renamed Food→Groceries and Eating out→Restaurants**: updated the seed list and added a guarded, idempotent `_rename_category` migration in `init_db()` that renames the row **and re-tags** existing bills/expenses, running before the seeding loop so the old name isn't re-added.
-- **Savings calculator nets out the month's expenses**: the Income tab's Monthly Budget now subtracts `expenses.total_for_month(current)` on top of bills, with a new "This Month's Expenses" line.
-- **Tooling**: two more project-local skills — `db-migration` (the safe `init_db()`-based schema-change procedure) and `new-feature` (the end-to-end layered build checklist).
-- Suite 100 → 113 tests (category repo + rename-migration + `total_for_month`), all green.
-
-_Earlier session entries are recorded in [session-summary.md](session-summary.md), [session-summary-archive.md](session-summary-archive.md), and git history._
+_Earlier session entries (including 2026-06-22's user-managed categories) are recorded in [session-summary.md](session-summary.md), [session-summary-archive.md](session-summary-archive.md), and git history._
 
 ## Roadmap
 

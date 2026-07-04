@@ -1,6 +1,8 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-07-03 — closed out the 2026-07-02 session: five scoped improvements shipped in one pass — daily net-worth snapshots, automatic rotating backups, offscreen view smoke tests, CI via flake checks + GitHub Action, and overdue one-time/yearly bills that persist until paid_
+_Last updated: 2026-07-04 — fixed a devShell startup crash (Qt platform plugin ABI mismatch) and ran `/improve-system` maintenance (permission allowlist expansion, skill audit — all clean)_
+
+_Previously: 2026-07-03 — closed out the 2026-07-02 session: five scoped improvements shipped in one pass — daily net-worth snapshots, automatic rotating backups, offscreen view smoke tests, CI via flake checks + GitHub Action, and overdue one-time/yearly bills that persist until paid_
 
 ## Current Project State
 
@@ -81,6 +83,12 @@ _Done 2026-07-02 (closed 2026-07-03): net-worth snapshots, automatic rotating ba
 - ~~Category-management UI~~ — **done 2026-06-22** (DB-backed table + Manage Categories dialog)
 
 ## Recent Decisions
+
+### 2026-07-04 session (devShell Qt crash fix + `/improve-system` maintenance)
+- **`python -m financeguru.main` aborted at startup** (`Could not load the Qt platform plugin "wayland"`/`"xcb"`) — root-caused with `coredumpctl`/`gdb` (backtrace: `QApplicationPrivate::init()` → `qFatal`) rather than guessed at. Two independent causes: `libxcb-cursor.so` missing from the runtime library path, and `QT_PLUGIN_PATH` inherited from the KDE Plasma login shell pointing at the system's `qtbase-6.11.1` — a different build than the `qtbase-6.11.0` PySide6 here links against (confirmed via `ldd`), so the xcb/wayland plugins loaded from the system path failed an ABI check ("found... but could not load").
+- **Fix lives in `flake.nix`'s devShell `shellHook`**, not a workaround the user has to remember: `LD_LIBRARY_PATH` now includes `pkgs.libxcb-cursor`, and `QT_PLUGIN_PATH` is pinned to `pkgs.qt6.qtbase`'s own plugin dir so it can't inherit a mismatched system value. Verified by launching the app and staying alive 3s+, plus `nix flake check` and the full pytest suite still passing.
+- **Leftover `union.general` KDE-theme-plugin warning and a Wayland icon-pixmap warning are cosmetic, not regressions** — confirmed by testing that even native system apps (`dolphin`) don't hit them; they're a side effect of mixing the project's pinned Qt with the system's KDE Qt, inherent to running a differently-versioned Qt app under `nix develop` on this desktop. Left as-is per user's call — not worth a `QT_LOGGING_RULES` suppression.
+- **`/improve-system` ran full 5-skill sweep** — skill-upgrade and skill-suggestion found nothing (this bug was a one-off, already permanently fixed in `flake.nix`, so no future session needs to redo the debugging); claude-rules found all 4 standing rules already present; skill-audit's two parallel sub-agents verified all 4 project-local skills (`audit`, `db-migration`, `new-feature`, `qt-smoke`) clean, including their file/function references against the live codebase; fewer-permission-prompts added `Bash(nix develop *)`, `Bash(nix eval *)`, `Bash(nix flake check)`, and `mcp__nixos__nix` to `.claude/settings.json` based on actual usage frequency across recent sessions.
 
 ### 2026-07-02 session (five improvements; closed 2026-07-03 after a session-limit cutoff)
 - **Session mechanics**: scoped via `/interview` with an independent reviewer agent critiquing the brief (7 must-fix ambiguities found and settled before build); the session hit its usage limit right after implementation, so verification + commit + close happened next session. Verification then ran clean: 151 tests in `nix develop`, `nix flake check`, and the real launch sequence driven twice against a throwaway `$HOME` (backup rotation, snapshot dedup, 10-tab offscreen MainWindow).
