@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(nix develop --command python -m pytest *)"
+      "Bash(nix develop --command python -m pytest *)",
+      "Bash(nix develop *)",
+      "Bash(nix eval *)",
+      "Bash(nix flake check)",
+      "mcp__nixos__nix"
     ]
   }
 }
