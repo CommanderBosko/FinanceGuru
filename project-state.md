@@ -1,8 +1,8 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-07-04 — fixed a devShell startup crash (Qt platform plugin ABI mismatch) and ran `/improve-system` maintenance (permission allowlist expansion, skill audit — all clean)_
+_Last updated: 2026-07-07 — fixed the **packaged app's** Qt platform-plugin crash (natalie-laptop couldn't launch FinanceGuru at all) and ran a full `/improve-system` sweep (new `qt-nix-wrapper-diagnose` skill, skill-audit fixes across 4 skills)_
 
-_Previously: 2026-07-03 — closed out the 2026-07-02 session: five scoped improvements shipped in one pass — daily net-worth snapshots, automatic rotating backups, offscreen view smoke tests, CI via flake checks + GitHub Action, and overdue one-time/yearly bills that persist until paid_
+_Previously: 2026-07-04 — fixed a devShell startup crash (Qt platform plugin ABI mismatch) and ran `/improve-system` maintenance (permission allowlist expansion, skill audit — all clean)_
 
 ## Current Project State
 
@@ -65,7 +65,7 @@ The app has ten fully-functional tabs — Dashboard, Bills, Payments, Expenses, 
 - (none)
 
 **What is broken:**
-- Nothing known
+- Nothing known **in code**. natalie-laptop's *installed package* has been unable to launch FinanceGuru at all (`no Qt platform plugin could be initialized`) until the fix ships there — the bug lived in `flake.nix`'s package build (not the devShell, which was already fixed 2026-07-04) and was only just fixed this session (2026-07-07, commit `517d45e`). Still needs `nix flake update financeguru` + rebuild on that host — see Next Steps.
 
 ## Current Goals
 
@@ -83,6 +83,14 @@ _Done 2026-07-02 (closed 2026-07-03): net-worth snapshots, automatic rotating ba
 - ~~Category-management UI~~ — **done 2026-06-22** (DB-backed table + Manage Categories dialog)
 
 ## Recent Decisions
+
+### 2026-07-07 session (packaged-app Qt fix + `/improve-system` sweep)
+- **The 2026-07-04 devShell fix didn't cover the installed package** — that fix only patched `devShells.default`'s `shellHook`; `packages.${system}.default` (what actually ships to NixOS hosts via the `financeguru` flake input) was untouched and still broken. Found by re-reading `flake.nix` rather than assuming the earlier fix was complete.
+- **Root cause was two-layered, and the first layer was worse than expected**: `wrapQtAppsHook`'s automatic wrap pass runs *before* `buildPythonApplication`'s own `wrapPythonPrograms` hook rewraps `bin/financeguru` for `PATH`/`PYTHONNOUSERSITE` — so the Qt env vars it set, **including `QT_PLUGIN_PATH` itself**, were silently dropped from the final wrapper with no build error. `nix build` succeeding never proved the app could actually find a platform plugin. `libxcb-cursor.so` was also still missing from the closure (same library gap fixed for the devShell in `2b9efdc`, never applied to the package).
+- **Verified by inspecting the actual wrapper binary, not by trusting the build.** Used `strings` on `$OUT/bin/financeguru` inside `nix develop` to confirm `QT_PLUGIN_PATH`/`LD_LIBRARY_PATH` were baked in, then ran the binary live (`timeout 5 ...`) on this machine's real Wayland session — exit via timeout with zero error output was the actual proof, not the build succeeding. This diagnostic technique is now captured as the `qt-nix-wrapper-diagnose` skill so it doesn't have to be rediscovered.
+- **Fix: `dontWrapQtApps = true` + explicit `postFixup` calling `wrapQtApp`** — disables the auto-wrap pass that was getting clobbered, and re-wraps explicitly *after* the Python wrap so the Qt args land last instead of being overwritten. `wrapQtApp` still auto-populates `QT_PLUGIN_PATH`/`XDG_DATA_DIRS` from `buildInputs` even with `dontWrapQtApps` set.
+- **Scoped via a deliberately lightweight `/interview`** — a two-question `AskUserQuestion` batch (session type, fix scope) rather than the skill's full ceremony (Project Brief + second-AI review), since this was a single concrete, already-diagnosed bug rather than a fuzzy project. Captured as a new Gotcha on the `interview` skill itself (in the NixOS repo) so future sessions know when to scale the ceremony down.
+- **`/improve-system` full 5-skill sweep**: skill-upgrade added the interview-skill gotcha above; skill-suggestion built `qt-nix-wrapper-diagnose` (the wrapper-inspection technique, recurring in 11 of ~20 past FinanceGuru sessions per transcript grep); claude-rules found all 4 standing rules already present; skill-audit (3 parallel sub-agents) found **zero correctness bugs** across all 5 project-local skills, only structural cleanup — `new-feature` now delegates its commit step to `git-commit` instead of hand-writing conventions, `db-migration`/`qt-smoke` had duplicated code templates extracted to `assets/`, `audit`'s `## Modes` renamed to `## Arguments`; fewer-permission-prompts found the existing allowlist already covers everything relevant, no changes needed.
 
 ### 2026-07-04 session (devShell Qt crash fix + `/improve-system` maintenance)
 - **`python -m financeguru.main` aborted at startup** (`Could not load the Qt platform plugin "wayland"`/`"xcb"`) — root-caused with `coredumpctl`/`gdb` (backtrace: `QApplicationPrivate::init()` → `qFatal`) rather than guessed at. Two independent causes: `libxcb-cursor.so` missing from the runtime library path, and `QT_PLUGIN_PATH` inherited from the KDE Plasma login shell pointing at the system's `qtbase-6.11.1` — a different build than the `qtbase-6.11.0` PySide6 here links against (confirmed via `ldd`), so the xcb/wayland plugins loaded from the system path failed an ABI check ("found... but could not load").
@@ -191,10 +199,10 @@ _Done 2026-07-02 (closed 2026-07-03): net-worth snapshots, automatic rotating ba
 
 ## Next Steps
 
-1. **Check CI went green** on GitHub Actions after this push — the workflow's first real run is on the runner, not locally.
-2. Build the **net-worth trend chart** over the now-accruing `snapshots` table; decide how to render the per-machine, gap-filled series.
-3. GUI eyeball of the Charts/Expenses tabs (legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
-4. Bump the `financeguru` input in the NixOS repo (`nix flake update financeguru`) and rebuild the two hosts so the machines start accruing snapshots and backups.
+1. **Bump the `financeguru` input in the NixOS repo (`nix flake update financeguru`) and rebuild natalie-laptop** — this is now the priority, not just nice-to-have: that host cannot launch the app at all until it picks up commit `517d45e`. Rebuilding also gets it the snapshots/backups feature from 2026-07-02.
+2. **Check CI went green** on GitHub Actions after this push — the workflow's first real run is on the runner, not locally.
+3. Build the **net-worth trend chart** over the now-accruing `snapshots` table; decide how to render the per-machine, gap-filled series.
+4. GUI eyeball of the Charts/Expenses tabs (legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
 
 _Done 2026-07-02 (closed 2026-07-03): net-worth snapshots (table + repo + launch/post-refresh capture), automatic rotating backups (pre-`init_db`, keep 14), view smoke tests + shared QApplication fixture, flake checks + GitHub Actions CI, overdue one-time/yearly bills persist until paid (151 tests; commit `e60442a`). Closed as redundant: custom yfinance retry handling._
 _Done 2026-06-26: whole-codebase audit #4 + fixes — public `refresh()` on all four stale-after-restore views, CSV exports created `0600` up front (+ header `_csv_safe`), `get_connection` closes deterministically, snowball ignores zero-balance debts, tighter ticker regex, `views/_table.py` cell-helper dedup, analyst-count NaN guard, unknown-frequency stderr warning, chart-axis/dialog-fetcher cleanup, bill/debt name validation, models use `DEFAULT_CATEGORY` (113 tests; commit `c5d9598`)._

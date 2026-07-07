@@ -1,3 +1,30 @@
+## Session: 2026-06-17 — Audit Pass #3, Per-Month Bill Scheduling, Two Skills
+
+**Focus**: Re-audit the grown codebase, fix what it surfaced, and capture the recurring workflows as skills.
+
+### What changed (and why)
+- **Audit #3 + fixes** (`a323e87`): the new modules were security-clean, but the QThread teardown was the real bug — views nested in a `QTabWidget` never get `closeEvent`, so the fetcher-cleanup was dead code and could abort the app on quit mid-fetch. Wired `MainWindow.closeEvent → stop_threads()`, added dialog `done()` cleanup, and a cancellable `_TickerFetcher`/`stop_fetcher`. Also scoped the dashboard to bills actually due this month, and made goal→Savings categorization key off the `goals.bill_id` FK instead of the `notes='Goal'` string (collision fix).
+- **Per-month bill scheduling** (`6a0c678`, `251ad48`): added nullable `due_month` (yearly) and `due_year` (one-time) columns + `Bill.is_due_in()`, so yearly/one-time bills show on the dashboard in their actual month instead of being dropped or counted every month.
+- **Self-audit of the day's own diff** (`8328e36`): found `stop_fetcher`'s bounded wait could be outrun by a multi-request ticker → added an unbounded fallback; stopped per-refresh thread accumulation; hoisted the goal-bill lookup; added QThread signal/cancel/stop tests. 91 → 100 tests.
+- **Two project-local skills** (`e63a4f9`): `qt-smoke` (offscreen-Qt view verification — the harness that was a roadmap "optional") and `audit` (comprehensive review orchestrating /security-review + /code-review + the project risk checklist + tests).
+
+### Decisions
+- Goal contributions identified by the **goals FK, not note text** — collision-free, NULL-safe, no migration needed (reporting keys off the live FK).
+- `Bill.is_due_in()` on the **model**, not the view — pure-Python, unit-testable without Qt.
+- `stop_fetcher` falls back to an **unbounded wait** — `cancel()` only lands between tickers and one ticker can issue several 8s-capped requests, so a bounded wait alone could still destroy a live thread.
+- **No CLAUDE.md skills catalog** — Claude auto-loads skill name+description each session; a list would be a drift-prone second source of truth (user's call).
+
+### Issues / surprises
+- The teardown `closeEvent` overrides on the views had been dead since they were written — Qt only delivers `closeEvent` to top-level windows, not `QTabWidget` children.
+
+### Next session
+- Net-worth trend view (deferred charts phase).
+- Optional: decide whether past-due one-time bills should keep showing on the dashboard.
+
+**Commits**: `a323e87..e63a4f9` (5 commits + this close)
+
+---
+
 ## Session: 2026-06-16 — Expense Tracking Layer + Spending Charts Tab
 
 **Focus**: Ship the top roadmap item — a reporting/charts tab — starting with spending-over-time.

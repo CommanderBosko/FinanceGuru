@@ -4,6 +4,31 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-07-07 — Packaged-App Qt Fix + `/improve-system` Sweep
+
+**Focus**: Fix the *installed* FinanceGuru package failing to launch on natalie-laptop (`no Qt platform plugin could be initialized`), then run a full `/improve-system` maintenance sweep.
+
+### What changed (and why)
+- **Fixed `packages.${system}.default` in `flake.nix`** — the 2026-07-04 devShell fix never touched the actual packaged app. Root cause: `wrapQtAppsHook`'s automatic wrap pass runs *before* `buildPythonApplication`'s own Python wrap, so the Qt env vars it sets (`QT_PLUGIN_PATH` included) were silently dropped from the final wrapper — `nix build` succeeded with no error while the app was still fundamentally broken. `libxcb-cursor.so` was also still missing from the closure. Fix: `dontWrapQtApps = true` + an explicit `postFixup` re-wrap after the Python wrap, so the Qt args land last.
+- **Verified by inspecting the built wrapper directly** (`strings` on `bin/financeguru` inside `nix develop`) and actually running the binary live on this machine's Wayland session, not just trusting `nix build`'s exit code.
+- **New skill: `qt-nix-wrapper-diagnose`** — captures this diagnostic technique; `wrapQtAppsHook` issues showed up in 11 of ~20 past FinanceGuru sessions per transcript grep, so this is a real recurring pain point, not a one-off.
+- **`/improve-system` full 5-skill sweep**: added a Gotcha to the `interview` skill (NixOS repo) about scaling the ceremony down for well-scoped technical fixes; skill-audit (3 parallel sub-agents) found zero correctness bugs across all 5 project-local skills — `new-feature` now delegates commits to `git-commit`, `db-migration`/`qt-smoke` had duplicated code templates extracted to `assets/`, `audit`'s `## Modes` renamed to `## Arguments`; claude-rules and fewer-permission-prompts both came back clean.
+
+### Decisions
+- Scoped via a deliberately lightweight `/interview` (two `AskUserQuestion` prompts, not the full Project Brief + second-AI-review ceremony) since this was a single, already-diagnosed bug — captured as a Gotcha so future sessions know when this is appropriate.
+- Held all four skill-audit refactors for explicit user confirmation before applying (per `/improve-system`'s structural-change gate), then implemented all four once approved.
+
+### Issues / surprises
+- The bug was invisible to `nix build`/`nix flake check` entirely — both passed the whole time the packaged app was broken. Static build success doesn't prove a Nix-wrapped app's runtime env is correct; only inspecting the wrapper and running it does.
+
+### Next session
+- **Priority**: bump the `financeguru` input in the NixOS repo and rebuild natalie-laptop — it cannot launch the app at all until it picks up this fix.
+- Check CI went green on GitHub Actions; build the net-worth trend chart; GUI-eyeball the Charts/Expenses tabs.
+
+**Commits**: `517d45e..839ce63` (2 commits, FinanceGuru) + `470963e` (1 commit, NixOS repo — interview skill gotcha)
+
+---
+
 ## Session: 2026-07-04 — devShell Qt Crash Fix + `/improve-system` Maintenance
 
 **Focus**: Fix `python -m financeguru.main` aborting at startup in `nix develop`, then run a full `/improve-system` maintenance sweep.
@@ -109,33 +134,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - Optional: make the in-app category rename also re-tag records, to match the migration's behavior (raised, not done).
 
 **Commits**: `abc82c3..9517733` (5 commits + this close)
-
----
-
-## Session: 2026-06-17 — Audit Pass #3, Per-Month Bill Scheduling, Two Skills
-
-**Focus**: Re-audit the grown codebase, fix what it surfaced, and capture the recurring workflows as skills.
-
-### What changed (and why)
-- **Audit #3 + fixes** (`a323e87`): the new modules were security-clean, but the QThread teardown was the real bug — views nested in a `QTabWidget` never get `closeEvent`, so the fetcher-cleanup was dead code and could abort the app on quit mid-fetch. Wired `MainWindow.closeEvent → stop_threads()`, added dialog `done()` cleanup, and a cancellable `_TickerFetcher`/`stop_fetcher`. Also scoped the dashboard to bills actually due this month, and made goal→Savings categorization key off the `goals.bill_id` FK instead of the `notes='Goal'` string (collision fix).
-- **Per-month bill scheduling** (`6a0c678`, `251ad48`): added nullable `due_month` (yearly) and `due_year` (one-time) columns + `Bill.is_due_in()`, so yearly/one-time bills show on the dashboard in their actual month instead of being dropped or counted every month.
-- **Self-audit of the day's own diff** (`8328e36`): found `stop_fetcher`'s bounded wait could be outrun by a multi-request ticker → added an unbounded fallback; stopped per-refresh thread accumulation; hoisted the goal-bill lookup; added QThread signal/cancel/stop tests. 91 → 100 tests.
-- **Two project-local skills** (`e63a4f9`): `qt-smoke` (offscreen-Qt view verification — the harness that was a roadmap "optional") and `audit` (comprehensive review orchestrating /security-review + /code-review + the project risk checklist + tests).
-
-### Decisions
-- Goal contributions identified by the **goals FK, not note text** — collision-free, NULL-safe, no migration needed (reporting keys off the live FK).
-- `Bill.is_due_in()` on the **model**, not the view — pure-Python, unit-testable without Qt.
-- `stop_fetcher` falls back to an **unbounded wait** — `cancel()` only lands between tickers and one ticker can issue several 8s-capped requests, so a bounded wait alone could still destroy a live thread.
-- **No CLAUDE.md skills catalog** — Claude auto-loads skill name+description each session; a list would be a drift-prone second source of truth (user's call).
-
-### Issues / surprises
-- The teardown `closeEvent` overrides on the views had been dead since they were written — Qt only delivers `closeEvent` to top-level windows, not `QTabWidget` children.
-
-### Next session
-- Net-worth trend view (deferred charts phase).
-- Optional: decide whether past-due one-time bills should keep showing on the dashboard.
-
-**Commits**: `a323e87..e63a4f9` (5 commits + this close)
 
 ---
 

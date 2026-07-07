@@ -4,7 +4,7 @@ A personal finance desktop application for two users (bosko and natty). Tracks r
 
 ## Current Status
 
-Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The app now records a daily net-worth snapshot and takes an automatic rotating backup at every launch, and CI (`nix flake check` via GitHub Actions) runs the package build plus the full test suite on every push. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon. A 151-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, and offscreen smoke tests of every view. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
+Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The app now records a daily net-worth snapshot and takes an automatic rotating backup at every launch, and CI (`nix flake check` via GitHub Actions) runs the package build plus the full test suite on every push. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 151-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, and offscreen smoke tests of every view. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
 
 ## Features
 
@@ -144,6 +144,11 @@ share/
 
 ## Recent Changes
 
+**2026-07-07 — Packaged-App Startup Fix + Skill Maintenance**
+
+- **Fixed the NixOS-installed package failing to launch** with "no Qt platform plugin could be initialized" — a different bug from the 2026-07-04 devShell fix below, and one that had been present in every packaged build. `wrapQtAppsHook`'s automatic wrap pass was silently dropping `QT_PLUGIN_PATH` from the final wrapper (clobbered by `buildPythonApplication`'s own Python wrap running after it), and `libxcb-cursor.so` was still missing from the closure. Fixed with `dontWrapQtApps = true` plus an explicit `postFixup` wrap so the Qt environment lands on the final binary.
+- Internal: added a `qt-nix-wrapper-diagnose` project skill and cleaned up the skill library (no functional/user-facing changes).
+
 **2026-07-04 — devShell Startup Fix**
 
 - **Fixed `nix develop` + `python -m financeguru.main` aborting at launch** with "Could not load the Qt platform plugin" for both `wayland` and `xcb`. The devShell now pins `LD_LIBRARY_PATH` (for `libxcb-cursor.so`, which the xcb plugin needs at runtime) and `QT_PLUGIN_PATH` (to this flake's own `qtbase`, so a KDE Plasma login shell's system Qt plugins — a different, ABI-incompatible build — can no longer shadow it) in `flake.nix`'s `shellHook`.
@@ -157,15 +162,7 @@ share/
 - **CI**: flake `checks` outputs (package build + sandboxed headless pytest) plus a GitHub Actions workflow running `nix flake check`, so CI and local verification are the same command.
 - Suite 113 → 151 tests, all green; `nix flake check` passes.
 
-**2026-06-26 — Whole-Codebase Audit (#4) + Fixes**
-
-- **Stale-data-after-restore bug fixed**: `Restore Database` reported success while the Payments, Stocks, Stock Tips, and Debt Snowball tabs kept showing pre-restore data — those four views only had private refresh methods, so the refresh-all gate skipped them. All views now expose a public `refresh()`.
-- **Security/data hardening**: CSV exports are created `0600` up front (no world-readable window) with header cells also sanitized; `get_connection()` is now a context manager that closes the connection deterministically.
-- **Correctness**: the Debt Snowball simulator no longer lets a zero-balance debt inflate the rolling payment pool; ticker validation rejects degenerate symbols (e.g. `A..B`, trailing separators); analyst-count cells are guarded against NaN; an unknown income frequency is logged rather than silently treated as monthly.
-- **Quality**: right/center table-cell builders deduped into `views/_table.py`; chart axes are deleted on rebuild; the stock-tip dialog frees its previous fetcher; bill/debt dialogs validate a non-empty name; models default their category from `DEFAULT_CATEGORY`.
-- Suite remains 113 tests, all green; fixes verified with headless offscreen-Qt smokes.
-
-_Earlier session entries (including 2026-06-22's user-managed categories) are recorded in [session-summary.md](session-summary.md), [session-summary-archive.md](session-summary-archive.md), and git history._
+_Earlier session entries (including 2026-06-26's audit #4 and 2026-06-22's user-managed categories) are recorded in [session-summary.md](session-summary.md), [session-summary-archive.md](session-summary-archive.md), and git history._
 
 ## Roadmap
 
