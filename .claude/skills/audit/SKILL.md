@@ -7,7 +7,7 @@ description: One comprehensive code review that orchestrates the security, corre
 
 Run one consolidated review of FinanceGuru that combines the separate review lenses — security, correctness, quality — with this project's own risk checklist, then proves the code still runs and reports findings grouped by severity. This is review-first: present findings and offer to fix; do not start editing without the user's go-ahead.
 
-## Modes
+## Arguments
 
 Read the optional argument; default is `full`.
 

@@ -43,7 +43,7 @@ Each layer depends on the one before it, so build bottom-up.
 
 10. **Audit if warranted** — for anything touching money math, file I/O, backup/restore, or external data, run `audit` before committing.
 
-11. **Commit** — only when asked, on a branch if on `main`. Conventional-commit subject (`feat(<area>): …`), summarize what each layer added and the test/smoke results, end with the `Co-Authored-By` trailer. Don't push unless asked.
+11. **Commit** — only when asked. **Invoke the `git-commit` skill** rather than hand-writing the commit — it already encodes the conventional-commit style and `Co-Authored-By` convention this project uses. Summarize what each layer added and the test/smoke results in your request to it. Don't push unless asked.
 
 ## Gotchas
 

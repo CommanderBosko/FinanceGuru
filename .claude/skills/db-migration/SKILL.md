@@ -34,32 +34,13 @@ Other invariants to respect:
 
 2. **Keep migrations idempotent.** `init_db()` runs on every launch, so every migration must be a no-op once applied. Use `IF NOT EXISTS`, `INSERT OR IGNORE`, `_ensure_column`'s presence check, or an explicit guard that reads current state first. Never write a migration that fails or duplicates on a second run.
 
-3. **For a data rename/fixup, write a guarded helper and re-tag records.** Mirror `_rename_category`: read current state, bail if the change is already applied *or* would collide, then update the row **and** re-tag every free-text reference. Example pattern:
-   ```python
-   def _rename_category(conn, old, new):
-       names = {r["name"] for r in conn.execute("SELECT name FROM categories")}
-       if old not in names or new in names:   # already done, or would collide
-           return
-       conn.execute("UPDATE categories SET name=? WHERE name=?", (new, old))
-       conn.execute("UPDATE bills    SET category=? WHERE category=?", (new, old))
-       conn.execute("UPDATE expenses SET category=? WHERE category=?", (new, old))
-   ```
-   Decide deliberately whether to re-tag existing records (a *complete* rename) or leave them (the in-app picker rename is deliberately picker-only). State which you chose and why in a comment.
+3. **For a data rename/fixup, write a guarded helper and re-tag records.** Mirror `_rename_category`: read current state, bail if the change is already applied *or* would collide, then update the row **and** re-tag every free-text reference. Read `assets/rename_category_template.py` for the pattern and adapt it — swap the table/column names and add an `UPDATE` line for every free-text table that references the old value. Decide deliberately whether to re-tag existing records (a *complete* rename) or leave them (the in-app picker rename is deliberately picker-only). State which you chose and why in a comment.
 
 4. **Order data migrations BEFORE seeding.** A rename must run before the `INSERT OR IGNORE` seeding loop, or the loop re-adds the old name as a brand-new row. On a fresh DB the table is still empty at migration time, so a well-guarded migration correctly no-ops and seeding inserts the new names directly. Verify both paths in your head before moving on.
 
 5. **Update the single source of truth, not just the DB.** Category names live in `src/financeguru/categories.py` (`CATEGORIES`, `PROTECTED_CATEGORIES`); the dialogs and charts read the live list from `repositories/categories.py`. If your change touches a constant or seed list, update it there and fix any docstring/example/test that hard-codes the old value (e.g. reporting docstrings, `test_categories.py`).
 
-6. **Write a migration test that simulates a pre-migration DB.** The `temp_db` conftest fixture calls a fresh `init_db()`, so to exercise the *upgrade* path you must roll the DB back to the old shape, tag some rows, then call `db.init_db()` again and assert. Cover the happy path **and** the guard (e.g. the no-clobber case). Pattern:
-   ```python
-   def test_rename_migration_renames_and_retags():
-       with db.get_connection() as conn:
-           conn.execute("UPDATE categories SET name='Food' WHERE name='Groceries'")
-       expense_repo.add(Expense(amount=Decimal("40"), spent_date="2026-06-01", category="Food"))
-       db.init_db()  # upgrade
-       assert "Groceries" in category_repo.names() and "Food" not in category_repo.names()
-       assert expense_repo.get_all()[0].category == "Groceries"
-   ```
+6. **Write a migration test that simulates a pre-migration DB.** The `temp_db` conftest fixture calls a fresh `init_db()`, so to exercise the *upgrade* path you must roll the DB back to the old shape, tag some rows, then call `db.init_db()` again and assert. Cover the happy path **and** the guard (e.g. the no-clobber case). Read `assets/migration_test_template.py` for the pattern and adapt it to the change under test.
 
 7. **Run the suite and a smoke test.**
    ```bash

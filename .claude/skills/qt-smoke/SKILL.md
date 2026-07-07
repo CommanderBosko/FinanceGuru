@@ -19,23 +19,9 @@ This fills a gap the other skills don't: `/run` launches the app with a real dis
    ```
    `QT_QPA_PLATFORM=offscreen` renders Qt with no display; `nix develop` is required because PySide6 only exists in the dev shell.
 
-3. **Redirect the database to a temp dir BEFORE `init_db()`** so real data is never touched:
-   ```python
-   import tempfile, pathlib
-   import financeguru.db as db
-   d = pathlib.Path(tempfile.mkdtemp()) / "fg"
-   db.DB_DIR = d
-   db.DB_PATH = d / "finance.db"
-   db.init_db()
-   ```
-   Set both attributes — `get_connection()` reads `db.DB_PATH` and `init_db()` makes `db.DB_DIR`.
+3. **Redirect the database to a temp dir BEFORE `init_db()`, then create the app.** Read `assets/preamble.py` and prepend it verbatim to your script — it redirects `db.DB_DIR`/`db.DB_PATH` to a throwaway temp dir before `init_db()` (so real data is never touched) and constructs the `QApplication`. Don't retype this by hand; a skipped line (e.g. only setting `DB_PATH` and forgetting `DB_DIR`) breaks the isolation this skill exists to guarantee. `get_connection()` reads `db.DB_PATH` and `init_db()` makes `db.DB_DIR`.
 
-4. **Create the app, then the widget:**
-   ```python
-   from PySide6.QtWidgets import QApplication
-   app = QApplication([])
-   ```
-   Then construct the target: `MainWindow()`, `BillDialog()`, `DashboardView()`, etc. Seed any data first via the repositories (`from financeguru.repositories import bills as bill_repo; bill_repo.add(Bill(...))`).
+4. **Construct the widget.** After the preamble, build the target: `MainWindow()`, `BillDialog()`, `DashboardView()`, etc. Seed any data first via the repositories (`from financeguru.repositories import bills as bill_repo; bill_repo.add(Bill(...))`).
 
 5. **Drive the interaction and assert state.** Use plain `assert`s. Common probes:
    - Dialog row visibility: `dlg._form.isRowVisible(dlg._due_month)` after `dlg._recurrence.setCurrentText("yearly")`
@@ -47,6 +33,8 @@ This fills a gap the other skills don't: `/run` launches the app with a real dis
 6. **Run it and report.** Pipe through `| tail -10` to keep output tight. Report `SMOKE OK` plus what was verified, or the assertion/traceback if it failed.
 
 ## Worked example — dashboard + dialog (today's pattern)
+
+The preamble below is `assets/preamble.py`'s content inlined (a `python -c` one-liner has to be a single self-contained script, so it can't `read` the asset file at runtime) — copy this whole example as your starting point rather than reassembling the preamble by hand.
 
 ```bash
 QT_QPA_PLATFORM=offscreen nix develop --command python -c "
