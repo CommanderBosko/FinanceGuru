@@ -27,7 +27,22 @@
         pkgs.qt6.wrapQtAppsHook
       ];
 
-      buildInputs = [ pkgs.qt6.qtbase ];
+      buildInputs = [ pkgs.qt6.qtbase pkgs.libxcb-cursor ];
+
+      # wrapQtAppsHook's automatic wrap pass only wraps ELF/Mach-O files it
+      # finds directly in $out/bin, keyed off whether they link Qt libs. For
+      # buildPythonApplication that file is bin/financeguru, a makeWrapper
+      # stub around a plain Python entry-point script — Qt is loaded
+      # indirectly through the PySide6 .so extension modules, so the
+      # auto-detect wraps it before Python's own wrapPythonPrograms hook
+      # rewraps it for PYTHONPATH/PATH, and the Qt env vars (crucially
+      # QT_PLUGIN_PATH — without it Qt can't find *any* platform plugin,
+      # hence "no Qt platform plugin could be initialized" even before
+      # considering the libxcb-cursor.so problem fixed for the devShell in
+      # 2b9efdc) get silently dropped. Disable the automatic pass and wrap
+      # explicitly in postFixup, which runs after the Python wrap, so our
+      # Qt args land on the final wrapper instead of being clobbered.
+      dontWrapQtApps = true;
 
       propagatedBuildInputs = pythonDeps python.pkgs;
 
@@ -36,6 +51,15 @@
           $out/share/applications/financeguru.desktop
         install -Dm644 share/icons/hicolor/scalable/apps/financeguru.svg \
           $out/share/icons/hicolor/scalable/apps/financeguru.svg
+      '';
+
+      # Runs after wrapPythonPrograms, so this is the last wrap applied —
+      # see the dontWrapQtApps comment above for why that ordering matters.
+      # wrapQtApp (from wrapQtAppsHook) still populates $qtWrapperArgs with
+      # QT_PLUGIN_PATH etc. from buildInputs even with dontWrapQtApps set.
+      postFixup = ''
+        wrapQtApp "$out/bin/financeguru" \
+          --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.libxcb-cursor ]}
       '';
 
       meta = {
