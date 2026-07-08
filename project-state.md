@@ -1,6 +1,8 @@
 # Project State — Finance Guru
 
-_Last updated: 2026-07-07 — fixed the **packaged app's** Qt platform-plugin crash (natalie-laptop couldn't launch FinanceGuru at all) and ran a full `/improve-system` sweep (new `qt-nix-wrapper-diagnose` skill, skill-audit fixes across 4 skills)_
+_Last updated: 2026-07-07 (evening) — added a `nix flake check` regression guard (`checks.qt-launch`) that actually launches the packaged binary under Xvfb, closing the gap that let the packaged-app Qt bug ship silently earlier the same day_
+
+_Earlier 2026-07-07: fixed the **packaged app's** Qt platform-plugin crash (natalie-laptop couldn't launch FinanceGuru at all) and ran a full `/improve-system` sweep (new `qt-nix-wrapper-diagnose` skill, skill-audit fixes across 4 skills)_
 
 _Previously: 2026-07-04 — fixed a devShell startup crash (Qt platform plugin ABI mismatch) and ran `/improve-system` maintenance (permission allowlist expansion, skill audit — all clean)_
 
@@ -41,6 +43,7 @@ The app has ten fully-functional tabs — Dashboard, Bills, Payments, Expenses, 
 - **`get_connection()` is a `@contextmanager`** that keeps transaction semantics (`with conn`) *and* closes the handle in `finally`, so connections/FDs are released deterministically instead of waiting on GC
 - Right/center `QTableWidgetItem` builders live once in `views/_table.py` (`right`/`center`), imported by every table view — previously re-declared per-view, often rebuilt inside the per-row loop
 - **CI** — `checks.x86_64-linux` in the flake runs the package build plus the full pytest suite in the Nix sandbox (offscreen Qt, `makeFontsConf` for fontconfig, writable `$HOME`); `.github/workflows/ci.yml` runs `nix flake check` on every push/PR, so the NixOS-side `nix flake update financeguru` can never pull a broken suite onto the two machines
+- **`checks.qt-launch`** — actually launches `packages.${system}.default`'s `bin/financeguru` under `xvfb-run` with `QT_QPA_PLATFORM=xcb` (exercises the same xcb/wayland plugin family, including the `libxcb-cursor` dlopen path, used on all three desktop hosts) and fails the check if the process doesn't stay running 5s. Added 2026-07-07 evening specifically because the `package` check alone (proves the derivation *builds*) missed the wrapQtAppsHook/postFixup bug that broke natalie-laptop earlier that day — `nix build`/`nix flake check` passed the whole time it was broken. Verified to fail on a deliberately-broken invocation and pass on the real fix.
 - Pytest suite (151 tests) run against a per-test temp-file SQLite database created via the real `init_db()` (`tests/conftest.py` fixture; a shared session-scoped offscreen `QApplication` fixture also lives there, since only one may exist per process):
   - **`snapshots` repo** (`test_snapshots.py`) — capture computes stock value / debt total / goal savings / net worth, one row per day with same-day upsert (`ON CONFLICT(snap_date) DO UPDATE`), goal savings via the `goals.bill_id` join drop out of *future* snapshots when a goal is deleted while past rows stay immutable, Decimal round-trip, empty-DB zeros
   - **Dashboard overdue rules** (`test_dashboard.py`) — cycle-scoped paid checks (one-time: any payment; yearly: payment on/after the most recent due-month occurrence), carried-over "Overdue (Month)" rows appear until paid and count in Total/Remaining, at most one overdue row per bill, monthly bills unaffected
@@ -83,6 +86,12 @@ _Done 2026-07-02 (closed 2026-07-03): net-worth snapshots, automatic rotating ba
 - ~~Category-management UI~~ — **done 2026-06-22** (DB-backed table + Manage Categories dialog)
 
 ## Recent Decisions
+
+### 2026-07-07 evening session (qt-launch regression guard)
+- **Closed the exact gap that let the packaged-app Qt bug ship silently** — the user asked "is there anything else we can do to mitigate this happening again," and the answer was that `nix flake check`'s only package-related check (`package = self.packages.${system}.default`) only proves the derivation builds, never that it runs. Added `checks.qt-launch` to prove the latter automatically, on every push/PR via the existing `ci.yml`.
+- **Used `xcb` under `xvfb-run`, not `offscreen`** — `offscreen` would have caught the `QT_PLUGIN_PATH`-dropping half of the original bug but not the `libxcb-cursor` dlopen half, since only the xcb/wayland platform plugins touch that library. `xvfb-run` gives a real (virtual) display so the `xcb` plugin actually loads, at the cost of needing `pkgs.xvfb-run` as a check-only dependency.
+- **Verified the verifier, not just the fix** — deliberately broke the check (invalid `QT_QPA_PLATFORM`) to confirm it fails loudly (`nix build` exit 1, Qt abort visible in the log) before trusting that it would catch a real regression, then confirmed it passes clean on the actual fixed package.
+- **Pointed the `qt-nix-wrapper-diagnose` skill at the new check** — its manual live-run step (step 4) is now documented as a debugging aid for *why* `qt-launch` failed, not the only gate standing between a broken package and a real machine.
 
 ### 2026-07-07 session (packaged-app Qt fix + `/improve-system` sweep)
 - **The 2026-07-04 devShell fix didn't cover the installed package** — that fix only patched `devShells.default`'s `shellHook`; `packages.${system}.default` (what actually ships to NixOS hosts via the `financeguru` flake input) was untouched and still broken. Found by re-reading `flake.nix` rather than assuming the earlier fix was complete.
@@ -199,7 +208,7 @@ _Done 2026-07-02 (closed 2026-07-03): net-worth snapshots, automatic rotating ba
 
 ## Next Steps
 
-1. **Bump the `financeguru` input in the NixOS repo (`nix flake update financeguru`) and rebuild natalie-laptop** — this is now the priority, not just nice-to-have: that host cannot launch the app at all until it picks up commit `517d45e`. Rebuilding also gets it the snapshots/backups feature from 2026-07-02.
+1. **Bump the `financeguru` input in the NixOS repo (`nix flake update financeguru`) and rebuild natalie-laptop** — this is now the priority, not just nice-to-have: that host cannot launch the app at all until it picks up commit `517d45e` (and now `cec48ba`, the `qt-launch` check — check-only, doesn't change the shipped package). Rebuilding also gets it the snapshots/backups feature from 2026-07-02.
 2. **Check CI went green** on GitHub Actions after this push — the workflow's first real run is on the runner, not locally.
 3. Build the **net-worth trend chart** over the now-accruing `snapshots` table; decide how to render the per-machine, gap-filled series.
 4. GUI eyeball of the Charts/Expenses tabs (legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.

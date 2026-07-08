@@ -4,6 +4,28 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-07-07 (evening) — qt-launch Regression Guard
+
+**Focus**: User asked whether anything else could mitigate the packaged-app Qt bug (fixed earlier this session) from recurring on this or other hosts.
+
+### What changed (and why)
+- **Added `checks.qt-launch` to `flake.nix`** — launches the built `packages.${system}.default` binary for real under `xvfb-run` with `QT_QPA_PLATFORM=xcb`, failing `nix flake check` (and CI) if the process doesn't stay running. The prior `package` check only proved the derivation builds, which is exactly why the earlier bug shipped silently — `nix build` succeeded the whole time the app was broken.
+- Used `xcb` under a virtual display rather than `offscreen` specifically so the check also exercises the `libxcb-cursor` dlopen path (the other half of the original bug), which `offscreen` wouldn't touch.
+- Updated the `qt-nix-wrapper-diagnose` skill to note its manual live-run step is now a debugging aid, not the only gate.
+
+### Decisions
+- Verified the check both ways before trusting it: deliberately broke it (bad `QT_QPA_PLATFORM`) to confirm it fails with a useful log, then confirmed it passes on the real fix.
+
+### Issues / surprises
+- None — straightforward, scoped addition.
+
+### Next session
+- Same as this morning's: bump `financeguru` in the NixOS repo and rebuild natalie-laptop (still pending — this session only added a CI guard, didn't ship the fix to the host).
+
+**Commits**: `cec48ba` (1 commit)
+
+---
+
 ## Session: 2026-07-07 — Packaged-App Qt Fix + `/improve-system` Sweep
 
 **Focus**: Fix the *installed* FinanceGuru package failing to launch on natalie-laptop (`no Qt platform plugin could be initialized`), then run a full `/improve-system` maintenance sweep.
@@ -106,34 +128,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - Optional: GUI eyeball of Charts/Expenses; decide whether the stacked over-time chart should also exclude Savings.
 
 **Commits**: `c5d9598` (1 commit) + this close
-
----
-
-## Session: 2026-06-22 — User-Managed Categories, Category Rename Migration, Savings-Calc Expenses, Two Skills
-
-**Focus**: Let the user manage their own spending categories, rename two of them cleanly, and make the savings calculator account for actual spending.
-
-### What changed (and why)
-- **Two categories then full feature, staged** (`abc82c3`, `745874c`): added "Eating out"/"Pets" as a one-line list change, then promoted categories from a fixed Python list to a seeded `categories` table with a repo, a "Manage Categories…" dialog (add/rename/delete), and protected Savings/Other. Bill/expense pickers and charts now read the live list from the DB. Each stage was an independent, reviewable commit (user chose "both, staged").
-- **Food→Groceries, Eating out→Restaurants** (`b1924d9`): updated the seed list and added a guarded, idempotent `_rename_category` migration in `init_db()` that renames the row **and re-tags** existing bills/expenses, so reports don't show split old/new buckets. Runs before the seeding loop so `INSERT OR IGNORE` doesn't re-add the old name.
-- **Savings calculator nets out the month's expenses** (`6b506fe`): the Income tab's Monthly Budget now subtracts `expenses.total_for_month(current)` on top of bills, with a new "This Month's Expenses" line. Expenses table only (not payments — bills already count as obligations).
-- **Two project skills** (`9517733`): `db-migration` (the schema-change conventions this session surfaced) and `new-feature` (end-to-end layered build checklist), the latter delegating to `db-migration`/`qt-smoke`/`audit`.
-- 100 → 113 tests; each change verified with pytest + a headless `qt-smoke`.
-
-### Decisions
-- **Protected categories** (Savings, Other) can't be renamed/deleted — reporting hard-codes those names; guarded in both the UI and the repo SQL.
-- **Category columns stay free text** — in-app rename is picker-only by design; the *code* rename migration re-tags records (the complete version). Intentional asymmetry, documented in both places.
-- **Migration before seeding**, guarded for idempotency; tested by simulating a pre-rename DB since the conftest fixture only starts fresh.
-- Savings calc uses the **current calendar month**, expenses table only — so "Extra" starts high and shrinks as spending is logged (intended for a running calculator).
-
-### Issues / surprises
-- The conftest `temp_db` fixture always runs a fresh `init_db()`, so it never exercises the migration's *upgrade* path — the migration tests have to roll the DB back to the old shape first. Captured this as a gotcha in the `db-migration` skill.
-
-### Next session
-- Net-worth trend view (still the top deferred item).
-- Optional: make the in-app category rename also re-tag records, to match the migration's behavior (raised, not done).
-
-**Commits**: `abc82c3..9517733` (5 commits + this close)
 
 ---
 

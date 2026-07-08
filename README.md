@@ -24,7 +24,7 @@ Active development — ten tabs fully implemented (Dashboard, Bills, Payments, E
 - **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells — headers included — sanitized against formula injection, each file created `0600` so it's never briefly world-readable), and Quit (Ctrl+Q).
 - **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
 - **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix.
-- **CI** — `nix flake check` builds the package and runs the full pytest suite headlessly in the Nix sandbox; a GitHub Actions workflow runs it on every push and pull request.
+- **CI** — `nix flake check` builds the package, runs the full pytest suite headlessly in the Nix sandbox, and actually launches the packaged binary under a virtual display (`xvfb-run` + `xcb`) to confirm its Qt runtime environment works, not just that it builds; a GitHub Actions workflow runs it on every push and pull request.
 
 ## Getting Started
 
@@ -143,6 +143,10 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-07-07 (evening) — CI Regression Guard for Packaged-App Startup**
+
+- **Added a `nix flake check` check that launches the packaged app for real** (`checks.qt-launch` in `flake.nix`), under `xvfb-run` with `QT_QPA_PLATFORM=xcb`, failing the check if the process doesn't stay running. The previous package check only proved the derivation *builds* — exactly why the startup bug below shipped silently. `xcb` (not `offscreen`) was chosen so the check also exercises the `libxcb-cursor` dlopen path.
 
 **2026-07-07 — Packaged-App Startup Fix + Skill Maintenance**
 
