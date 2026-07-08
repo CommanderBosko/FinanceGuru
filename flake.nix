@@ -89,6 +89,34 @@
         pytest ${self}/tests -p no:cacheprovider
         touch $out
       '';
+
+      # `package` above only proves the derivation builds — it does not prove
+      # the wrapped binary can actually find a Qt platform plugin at runtime
+      # (see the dontWrapQtApps/postFixup comments on the package derivation:
+      # that exact gap shipped silently on 2026-07-07 and broke natalie-laptop).
+      # Launch it for real under Xvfb with the xcb platform — the same plugin
+      # family used on the wayland;xcb hosts — so a regression here fails
+      # `nix flake check` instead of surfacing only on a real machine.
+      qt-launch = pkgs.runCommand "financeguru-qt-launch"
+        {
+          nativeBuildInputs = [ pkgs.xvfb-run ];
+        } ''
+        export HOME=$TMPDIR
+        LOG=$TMPDIR/launch.log
+        set +e
+        xvfb-run -a bash -c "QT_QPA_PLATFORM=xcb timeout 5 ${self.packages.${system}.default}/bin/financeguru" > "$LOG" 2>&1
+        status=$?
+        set -e
+        cat "$LOG"
+        # timeout's 124 means the app launched and was still running when we
+        # killed it — that's success. Any other exit means it died early,
+        # almost always a Qt platform-plugin or missing-library error.
+        if [ "$status" -ne 124 ]; then
+          echo "financeguru exited early (code $status) instead of staying up under Xvfb — see log above"
+          exit 1
+        fi
+        touch $out
+      '';
     };
 
     devShells.${system}.default = pkgs.mkShell {

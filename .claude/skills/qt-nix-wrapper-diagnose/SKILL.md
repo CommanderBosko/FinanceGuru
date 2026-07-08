@@ -38,11 +38,13 @@ This exists because `wrapQtAppsHook`'s automatic wrap pass can silently fail for
    ```
    Exit code `124` (killed by `timeout`, i.e. it stayed running) with an empty log = success. An immediate exit with a Qt platform-plugin error on stderr = still broken — go to step 6.
 
+   This exact live-run is now automated as the `checks.${system}.qt-launch` derivation in `flake.nix` (added after the 2026-07-07 incident), run under `xvfb-run` with `QT_QPA_PLATFORM=xcb` so it also exercises the `libxcb-cursor` dlopen path, not just plugin-path resolution. It runs on every `nix flake check`, including CI (`.github/workflows/ci.yml`). Step 4 above is still useful for interactive debugging (faster iteration, no Xvfb), but a regression should now fail CI on its own before it reaches a real machine.
+
 5. **Run the full check suite:**
    ```bash
    nix flake check
    ```
-   Confirms the `package` and `pytest` checks in `flake.nix` still pass.
+   Confirms the `package`, `pytest`, and `qt-launch` checks in `flake.nix` still pass.
 
 6. **If step 3 or 4 shows a missing/broken env var**, the fix pattern (used 2026-07-07) is:
    - Set `dontWrapQtApps = true;` on the `buildPythonApplication` derivation — this disables `wrapQtAppsHook`'s auto-detect pass that gets clobbered.
