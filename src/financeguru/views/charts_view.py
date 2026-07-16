@@ -1,26 +1,37 @@
+from datetime import date
+
 from PySide6.QtCharts import (
     QBarCategoryAxis,
     QBarSet,
     QChart,
     QChartView,
+    QDateTimeAxis,
+    QLineSeries,
     QPieSeries,
+    QScatterSeries,
     QStackedBarSeries,
     QValueAxis,
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainter
+from PySide6.QtCore import QDate, QDateTime, Qt, QTime
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from financeguru import reporting
 from financeguru.repositories import categories as category_repo
+from financeguru.repositories import snapshots as snapshot_repo
 
 _WINDOW = 12
+
+# One metric, one colour — per-segment lines must read as a single broken
+# series, not as distinct series (Qt would otherwise cycle theme colours).
+_TREND_COLOR = QColor("#2d7dd2")
 
 
 class ChartsView(QWidget):
@@ -30,7 +41,15 @@ class ChartsView(QWidget):
 
         layout = QVBoxLayout(self)
 
-        # --- Control bar -----------------------------------------------------
+        # Spending (stacked bars + pie) and Net Worth (trend line) share the
+        # tab; a third chart stacked vertically would crowd all of them.
+        self._subtabs = QTabWidget()
+        layout.addWidget(self._subtabs)
+
+        # --- Spending page ---------------------------------------------------
+        spending_page = QWidget()
+        spending_layout = QVBoxLayout(spending_page)
+
         controls = QHBoxLayout()
         controls.addStretch()
 
@@ -38,19 +57,30 @@ class ChartsView(QWidget):
         self._month_picker = QComboBox()
         controls.addWidget(self._month_picker)
 
-        layout.addLayout(controls)
+        spending_layout.addLayout(controls)
 
-        # --- Over-time chart -------------------------------------------------
         self._time_chart = QChart()
         self._time_view = QChartView(self._time_chart)
         self._time_view.setRenderHint(QPainter.Antialiasing)
-        layout.addWidget(self._time_view)
+        spending_layout.addWidget(self._time_view)
 
-        # --- Pie chart -------------------------------------------------------
         self._pie_chart = QChart()
         self._pie_view = QChartView(self._pie_chart)
         self._pie_view.setRenderHint(QPainter.Antialiasing)
-        layout.addWidget(self._pie_view)
+        spending_layout.addWidget(self._pie_view)
+
+        self._subtabs.addTab(spending_page, "Spending")
+
+        # --- Net Worth page --------------------------------------------------
+        networth_page = QWidget()
+        networth_layout = QVBoxLayout(networth_page)
+
+        self._trend_chart = QChart()
+        self._trend_view = QChartView(self._trend_chart)
+        self._trend_view.setRenderHint(QPainter.Antialiasing)
+        networth_layout.addWidget(self._trend_view)
+
+        self._subtabs.addTab(networth_page, "Net Worth")
 
         # Signals — connect after building widgets so initial refresh is clean.
         self._month_picker.currentIndexChanged.connect(self._rebuild_pie_chart)
@@ -79,6 +109,7 @@ class ChartsView(QWidget):
 
         self._rebuild_time_chart()
         self._rebuild_pie_chart()
+        self._rebuild_trend_chart()
 
     # -- Over-time chart ------------------------------------------------------
     def _rebuild_time_chart(self) -> None:
@@ -131,6 +162,74 @@ class ChartsView(QWidget):
             (sum(entry["by_category"].values()) for entry in self._months),
             default=0.0,
         )
+
+    # -- Net-worth trend chart --------------------------------------------------
+    def _rebuild_trend_chart(self) -> None:
+        chart = self._trend_chart
+        chart.removeAllSeries()
+        for axis in list(chart.axes()):
+            # Same leak avoidance as the time chart: removeAxis returns
+            # ownership, so delete the old axis explicitly.
+            chart.removeAxis(axis)
+            axis.deleteLater()
+        chart.legend().setVisible(False)
+
+        snaps = snapshot_repo.get_all()
+        if not snaps:
+            chart.setTitle(
+                "Tracked net worth (no snapshots yet — one accrues each day the app runs)"
+            )
+            return
+        chart.setTitle("Tracked net worth — stocks − debts + goal savings")
+
+        # The series only has points for days the app launched. Draw each
+        # contiguous run as its own line and mark every snapshot with a dot, so
+        # gaps show as breaks instead of a line pretending the value was known.
+        def to_msecs(snap) -> float:
+            d = date.fromisoformat(snap.snap_date)
+            return float(
+                QDateTime(QDate(d.year, d.month, d.day), QTime(12, 0)).toMSecsSinceEpoch()
+            )
+
+        dots = QScatterSeries()
+        dots.setColor(_TREND_COLOR)
+        dots.setBorderColor(_TREND_COLOR)
+        dots.setMarkerSize(7.0)
+        all_series = [dots]
+        for segment in snapshot_repo.trend_segments(snaps):
+            line = QLineSeries()
+            line.setColor(_TREND_COLOR)
+            for snap in segment:
+                point = (to_msecs(snap), float(snap.net_worth))
+                line.append(*point)
+                dots.append(*point)
+            if len(segment) > 1:
+                all_series.append(line)
+        for series in all_series:
+            chart.addSeries(series)
+
+        axis_x = QDateTimeAxis()
+        axis_x.setFormat("MMM d yyyy")
+        first = QDateTime.fromMSecsSinceEpoch(int(to_msecs(snaps[0])))
+        last = QDateTime.fromMSecsSinceEpoch(int(to_msecs(snaps[-1])))
+        # A day of padding keeps edge points (and a single-snapshot series,
+        # which would otherwise produce a degenerate zero-width axis) visible.
+        axis_x.setRange(first.addDays(-1), last.addDays(1))
+        chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+
+        axis_y = QValueAxis()
+        axis_y.setLabelFormat("$%.0f")
+        values = [float(s.net_worth) for s in snaps]
+        low, high = min(values), max(values)
+        # Net worth can be negative (debts outweigh stocks), so pad around the
+        # actual range rather than anchoring at zero.
+        pad = max((high - low) * 0.05, 1.0)
+        axis_y.setRange(low - pad, high + pad)
+        chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+
+        for series in all_series:
+            series.attachAxis(axis_x)
+            series.attachAxis(axis_y)
 
     # -- Pie chart ------------------------------------------------------------
     def _rebuild_pie_chart(self) -> None:

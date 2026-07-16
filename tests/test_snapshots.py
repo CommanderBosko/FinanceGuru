@@ -94,6 +94,44 @@ def test_get_all_is_ordered_oldest_first_and_decimal():
     assert all(isinstance(s.net_worth, Decimal) for s in rows)
 
 
+def _snap(day: str) -> "snapshots.Snapshot":
+    from financeguru.models.snapshot import Snapshot
+    zero = Decimal("0")
+    return Snapshot(snap_date=day, stock_value=zero, debt_total=zero,
+                    goal_savings=zero, net_worth=zero)
+
+
+def test_trend_segments_empty_and_single():
+    assert snapshots.trend_segments([]) == []
+    lone = _snap("2026-07-01")
+    assert snapshots.trend_segments([lone]) == [[lone]]
+
+
+def test_trend_segments_splits_only_on_gaps_beyond_threshold():
+    snaps = [
+        _snap("2026-07-01"),
+        _snap("2026-07-02"),
+        _snap("2026-07-09"),   # exactly 7 days after the 2nd — still connected
+        _snap("2026-07-17"),   # 8 days — new segment
+        _snap("2026-07-18"),
+    ]
+    segments = snapshots.trend_segments(snaps)
+    assert [[s.snap_date for s in seg] for seg in segments] == [
+        ["2026-07-01", "2026-07-02", "2026-07-09"],
+        ["2026-07-17", "2026-07-18"],
+    ]
+
+
+def test_trend_segments_sorts_input_and_honors_custom_gap():
+    snaps = [_snap("2026-07-05"), _snap("2026-07-01"), _snap("2026-07-03")]
+    segments = snapshots.trend_segments(snaps, max_gap_days=1)
+    assert [[s.snap_date for s in seg] for seg in segments] == [
+        ["2026-07-01"],
+        ["2026-07-03"],
+        ["2026-07-05"],
+    ]
+
+
 def test_deleting_a_goal_drops_its_savings_from_future_captures():
     _add_goal_with_payments("200")
     assert snapshots.capture(date(2026, 7, 1)).goal_savings == Decimal("200")

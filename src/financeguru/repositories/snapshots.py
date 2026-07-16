@@ -68,6 +68,37 @@ def get_all() -> list[Snapshot]:
     return [_row_to_snapshot(r) for r in rows]
 
 
+# Consecutive snapshots at most this many days apart are considered one
+# contiguous run for trend drawing. A week covers the realistic launch cadence
+# (the app snapshots only on days it runs); anything longer is a genuine gap
+# the chart must show as a break rather than interpolate across.
+MAX_TREND_GAP_DAYS = 7
+
+
+def trend_segments(
+    snaps: list[Snapshot], max_gap_days: int = MAX_TREND_GAP_DAYS
+) -> list[list[Snapshot]]:
+    """Split a snapshot series into contiguous runs for honest gap rendering.
+
+    Returns oldest-first segments; a new segment starts wherever two adjacent
+    snapshots are more than ``max_gap_days`` apart. The chart draws each
+    segment as its own connected line (a single-snapshot segment renders as a
+    lone point), so days the app never ran appear as visible breaks instead of
+    a line pretending the value was known in between. Pure — sorts its input,
+    touches no database.
+    """
+    ordered = sorted(snaps, key=lambda s: s.snap_date)
+    segments: list[list[Snapshot]] = []
+    previous: date | None = None
+    for snap in ordered:
+        day = date.fromisoformat(snap.snap_date)
+        if previous is None or (day - previous).days > max_gap_days:
+            segments.append([])
+        segments[-1].append(snap)
+        previous = day
+    return segments
+
+
 def _row_to_snapshot(row) -> Snapshot:
     return Snapshot(
         id=row["id"],

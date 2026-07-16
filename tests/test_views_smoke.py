@@ -204,3 +204,18 @@ def test_view_constructs_and_refreshes(view_cls, qapp, seeded_db):
     view = view_cls()
     view.refresh()
     _dispose(view, qapp)
+
+
+def test_charts_net_worth_trend_renders_gapped_series(qapp, seeded_db):
+    # Two runs separated by a >7-day gap: the trend chart must hold the dot
+    # series plus one line per contiguous segment (never a line spanning the
+    # gap), and re-render cleanly on refresh.
+    from financeguru.repositories import snapshots
+
+    for day in (date(2026, 6, 1), date(2026, 6, 2), date(2026, 6, 20), date(2026, 6, 21)):
+        snapshots.capture(day)
+    view = ChartsView()
+    assert len(view._trend_chart.series()) == 3  # dots + 2 segment lines
+    view.refresh()
+    assert len(view._trend_chart.series()) == 3
+    _dispose(view, qapp)
