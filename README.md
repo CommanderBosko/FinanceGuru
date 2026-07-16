@@ -4,17 +4,17 @@ A personal finance desktop application for two users (bosko and natty). Tracks r
 
 ## Current Status
 
-Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The app now records a daily net-worth snapshot and takes an automatic rotating backup at every launch, and CI (`nix flake check` via GitHub Actions) runs the package build plus the full test suite on every push. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 151-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, and offscreen smoke tests of every view. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
+Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The Charts tab now includes a **net-worth trend chart** drawn from the daily snapshots the app has been recording since 2026-07-02, rendered gap-honestly (no interpolation across days the app didn't run). The app records that snapshot and takes an automatic rotating backup at every launch, and CI (`nix flake check` via GitHub Actions) runs the package build, the full test suite, and a real launch of the packaged binary on every push. The flake's outputs are generated for both `x86_64-linux` and `aarch64-linux`. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 159-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, offscreen smoke tests of every view, and behavioral tests of the Expenses filters. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
 
 ## Features
 
 - **Dashboard** — Bills actually due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Monthly bills appear every month, yearly bills only in their due month, and one-time bills only in their exact month and year. Unpaid one-time and yearly bills from past months are carried over as "Overdue (Month)" rows until paid — they never silently vanish — and count toward the Total/Remaining summary. Auto-refreshes on tab focus.
-- **Net-worth snapshots** — A daily snapshot (stock value, debt total, goal savings, net worth) is recorded automatically at launch and updated after a full price refresh, building the history a future net-worth trend chart will draw. One row per day; past rows are immutable.
+- **Net-worth snapshots** — A daily snapshot (stock value, debt total, goal savings, net worth) is recorded automatically at launch and updated after a full price refresh; the Charts tab's Net Worth view draws this history. One row per day; past rows are immutable.
 - **Automatic backups** — A rotating daily backup is written at every launch (before any schema migration runs, so a bad migration is always recoverable) to `~/.local/share/financeguru/backups/`, keeping the newest 14. Manual pre-restore safety copies are never pruned.
 - **Bills** — Full CRUD for recurring bills (name, amount, due day, recurrence, category). Recurrence is schedule-aware: `monthly` bills recur every month, `yearly` bills carry a due month, and `one-time` bills carry a full due month + year (the dialog reveals the right pickers per recurrence). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
 - **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A "This month only" checkbox (on by default) filters the list to the current calendar month; uncheck to see the full history. A live search bar filters by bill name, amount, date, or notes.
-- **Expenses** — Log one-off, non-recurring expenses (amount, date, category, notes) with full Add/Edit/Delete CRUD, double-click to edit, and a right-click context menu. Categories are **user-managed**: a "Manage Categories…" button opens a dialog to add, rename, and delete categories (seeded with Housing, Utilities, Groceries, Restaurants, Transport, Health, Entertainment, Pets, Savings, Other). Savings and Other are protected (the reporting layer depends on them) and can't be renamed or deleted.
-- **Charts** — Visualizes spending over the trailing 12 months. A stacked bar chart breaks each month's spending into categories; a pie chart shows a single month's breakdown (defaults to the current month, with a picker for any of the last 12). Spending = all payments + all expenses; goal contributions (payments against a goal-linked bill, identified by the goals foreign key) are counted as "Savings" and excluded from the monthly spending total. Auto-refreshes on tab focus.
+- **Expenses** — Log one-off, non-recurring expenses (amount, date, category, notes) with full Add/Edit/Delete CRUD, double-click to edit, and a right-click context menu. A "This month only" checkbox (on by default) scopes the table to the current calendar month, and a live search bar filters by amount, date, category, or notes — the same filter pair as the Payments tab. Categories are **user-managed**: a "Manage Categories…" button opens a dialog to add, rename, and delete categories (seeded with Housing, Utilities, Groceries, Restaurants, Transport, Health, Entertainment, Pets, Savings, Other). Savings and Other are protected (the reporting layer depends on them) and can't be renamed or deleted.
+- **Charts** — Two sub-tabs. *Spending* visualizes the trailing 12 months: a stacked bar chart breaks each month's spending into categories, and a pie chart shows a single month's breakdown (defaults to the current month, with a picker for any of the last 12). Spending = all payments + all expenses; goal contributions (payments against a goal-linked bill, identified by the goals foreign key) are counted as "Savings" and excluded from the monthly spending total. *Net Worth* draws the daily snapshot history as a date-axis line chart — contiguous runs of snapshots (≤7 days apart) connect into lines, every snapshot is dotted, and longer gaps render as visible breaks rather than interpolated lines. Auto-refreshes on tab focus.
 - **Stocks** — Portfolio holdings with ticker, shares, purchase price, date, total cost basis, and live market price / market value / gain-loss fetched via yfinance. Green/red gain-loss colouring. Refresh Prices button triggers a background QThread fetch.
 - **Stock Tips** — Track personal tips (ticker, action, target price, confidence, notes). Refresh Analyst Data fetches yfinance analyst consensus and mean price target, caching them in the DB without overwriting user-entered values.
 - **Debt Snowball** — Track debts (balance, APR, minimum payment). A pure-Python month-by-month simulator computes both Snowball and Avalanche payoff strategies with rolling extra payments. Side-by-side summary shows total interest paid and time saved per strategy. A per-debt monthly payment schedule table shows exactly how each month's payment is allocated. One-time lump-sum extra payments (windfalls, bonuses, tax refunds) can be injected at a specific month and cascade across debts.
@@ -23,7 +23,7 @@ Active development — ten tabs fully implemented (Dashboard, Bills, Payments, E
 - **Right-click context menus** — The data tables (Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
 - **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells — headers included — sanitized against formula injection, each file created `0600` so it's never briefly world-readable), and Quit (Ctrl+Q).
 - **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
-- **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix.
+- **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix. Packages, checks, and devShells are generated per-system (`x86_64-linux` and `aarch64-linux`), so an ARM host can consume the flake unchanged.
 - **CI** — `nix flake check` builds the package, runs the full pytest suite headlessly in the Nix sandbox, and actually launches the packaged binary under a virtual display (`xvfb-run` + `xcb`) to confirm its Qt runtime environment works, not just that it builds; a GitHub Actions workflow runs it on every push and pull request.
 
 ## Getting Started
@@ -122,7 +122,8 @@ src/financeguru/
     ├── expense_dialog.py         # Add/Edit one-off expense form
     ├── expenses_view.py          # Expenses tab — table + Add/Edit/Delete + Manage Categories
     ├── category_dialog.py        # Manage Categories dialog (add/rename/delete; protects Savings/Other)
-    ├── charts_view.py            # Charts tab — stacked monthly spending + category breakdown pie (QtCharts)
+    ├── charts_view.py            # Charts tab — Spending (stacked bars + pie) and Net Worth (trend line) sub-tabs (QtCharts)
+    ├── _table.py                 # Shared table-cell builders (right/center) + the money() display formatter
     ├── stock_dialog.py           # Add/Edit stock holding form
     ├── stocks_view.py            # Stocks tab — holdings table + live prices
     ├── stock_tip_dialog.py       # Add/Edit stock tip form
@@ -144,6 +145,14 @@ share/
 
 ## Recent Changes
 
+**2026-07-16 — Net-Worth Trend Chart, Expenses Filters, Multi-System Flake**
+
+- **Net-worth trend chart shipped** — the Charts tab now has Spending / Net Worth sub-tabs; the new view draws the accrued daily snapshots on a date axis, breaking the line wherever adjacent snapshots are more than 7 days apart and dotting every point, so days the app never ran show as honest gaps rather than interpolation.
+- **Expenses tab filters** — "This month only" checkbox and live search, matching the Payments tab.
+- **Multi-system flake** — packages/checks/devShells are generated for `x86_64-linux` and `aarch64-linux` via a `forAllSystems` helper; derivations unchanged.
+- **Consistent money formatting** — all amounts now route through a single `money()` formatter (`$1,234.56`); the Expenses tab had drifted to a separator-less format.
+- Suite 151 → 159 tests, all green; `nix flake check` (build + tests + real packaged-app launch) passes; CI confirmed green on the GitHub runner.
+
 **2026-07-07 (evening) — CI Regression Guard for Packaged-App Startup**
 
 - **Added a `nix flake check` check that launches the packaged app for real** (`checks.qt-launch` in `flake.nix`), under `xvfb-run` with `QT_QPA_PLATFORM=xcb`, failing the check if the process doesn't stay running. The previous package check only proved the derivation *builds* — exactly why the startup bug below shipped silently. `xcb` (not `offscreen`) was chosen so the check also exercises the `libxcb-cursor` dlopen path.
@@ -153,25 +162,11 @@ share/
 - **Fixed the NixOS-installed package failing to launch** with "no Qt platform plugin could be initialized" — a different bug from the 2026-07-04 devShell fix below, and one that had been present in every packaged build. `wrapQtAppsHook`'s automatic wrap pass was silently dropping `QT_PLUGIN_PATH` from the final wrapper (clobbered by `buildPythonApplication`'s own Python wrap running after it), and `libxcb-cursor.so` was still missing from the closure. Fixed with `dontWrapQtApps = true` plus an explicit `postFixup` wrap so the Qt environment lands on the final binary.
 - Internal: added a `qt-nix-wrapper-diagnose` project skill and cleaned up the skill library (no functional/user-facing changes).
 
-**2026-07-04 — devShell Startup Fix**
-
-- **Fixed `nix develop` + `python -m financeguru.main` aborting at launch** with "Could not load the Qt platform plugin" for both `wayland` and `xcb`. The devShell now pins `LD_LIBRARY_PATH` (for `libxcb-cursor.so`, which the xcb plugin needs at runtime) and `QT_PLUGIN_PATH` (to this flake's own `qtbase`, so a KDE Plasma login shell's system Qt plugins — a different, ABI-incompatible build — can no longer shadow it) in `flake.nix`'s `shellHook`.
-
-**2026-07-02 — Net-Worth Snapshots, Auto Backups, View Smoke Tests, CI, Overdue Bills**
-
-- **Daily net-worth snapshots**: a new `snapshots` table records tracked net worth (stock value − debt total + goal savings) once per day — captured at launch and updated after a full price refresh — so the future trend chart has history to draw from day one. Goal savings are computed live from goal-linked payments; past rows are immutable.
-- **Automatic rotating backups**: a dated backup is written at every launch *before* schema migrations run (a bad migration is always recoverable), skipping if today's copy exists, keeping the newest 14, and never touching pre-restore safety copies.
-- **Overdue bills persist until paid**: unpaid one-time/yearly bills whose due month has passed now carry over onto the dashboard as "Overdue (Month)" rows with a cycle-scoped paid check (last year's payment can't satisfy this year's cycle), counted in Total/Remaining.
-- **View smoke tests**: every tab is constructed offscreen in pytest and its public `refresh()` contract asserted — the contract whose violation was audit #4's only real bug.
-- **CI**: flake `checks` outputs (package build + sandboxed headless pytest) plus a GitHub Actions workflow running `nix flake check`, so CI and local verification are the same command.
-- Suite 113 → 151 tests, all green; `nix flake check` passes.
-
-_Earlier session entries (including 2026-06-26's audit #4 and 2026-06-22's user-managed categories) are recorded in [session-summary.md](session-summary.md), [session-summary-archive.md](session-summary-archive.md), and git history._
+_Earlier session entries (including 2026-07-04's devShell Qt fix, 2026-07-02's snapshots/backups/CI batch, 2026-06-26's audit #4, and 2026-06-22's user-managed categories) are recorded in [session-summary.md](session-summary.md), [session-summary-archive.md](session-summary-archive.md), and git history._
 
 ## Roadmap
 
-- **Net-worth trend chart** — The data layer shipped 2026-07-02 (daily snapshots are accruing); the chart over that history is the next feature. Must handle a per-machine, gap-filled series (rows exist only for days the app launched).
-- **Charts polish** — GUI eyeball of the Charts/Expenses tabs (legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
+- **Charts polish** — GUI eyeball of the Charts/Expenses tabs on a real display (the new net-worth trend's gap breaks and axis density, legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
 - **Multi-user support** — App is used by two people (bosko, natty); per-user data partitioning is not yet implemented, and the two machines hold two independent SQLite files (a sync-vs-partition decision to make deliberately first).
 - **Schema migrations** — No framework, but `init_db()` is the established migration point and the `db-migration` skill documents the procedure (additive columns, guarded idempotent data fixups, idempotent seeding). Column drop/rename is still manual SQL.
 

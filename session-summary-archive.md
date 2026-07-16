@@ -1,3 +1,31 @@
+## Session: 2026-06-26 — Whole-Codebase Audit (#4) + Fixes
+
+**Focus**: Run a full audit of the clean codebase and fix everything it surfaced.
+
+### What changed (and why)
+- **Audit fanned out across four parallel lenses** (data/SQL, network/prices, views/QThread, domain/money), then findings consolidated and all fixed in one commit (`c5d9598`). With a clean tree the diff-based `/security-review` and `/code-review` skills have nothing to review, so the pass leaned on the project risk checklist + the review sub-agents.
+- **One real correctness bug**: `MainWindow._refresh_all` duck-types `refresh()`, but `PaymentsView`/`StocksView`/`StockTipsView`/`DebtSnowballView` only had private `_refresh`/`_load`, so a **DB restore reported success while those four tabs kept showing pre-restore data**. Added the public alias to all four.
+- **Security/data**: CSV exports now created `0600` up front (no world-readable window) with header cells also `_csv_safe`'d; `get_connection` is a closing `@contextmanager`.
+- **Correctness**: snowball pre-marks zero-balance debts so they don't inflate the rolling pool; tighter ticker regex rejects degenerate symbols; analyst-count cells guarded against NaN; unknown income frequency logged to stderr.
+- **Quality**: deduped right/center cell builders into `views/_table.py`; chart axes `deleteLater()`'d on rebuild; `StockTipDialog` frees its prior fetcher; `bill_dialog`/`debt_dialog` name validation aligned; models default `category` from `DEFAULT_CATEGORY`; stale `GOAL_NOTE` comment fixed.
+- 113 tests still green; offscreen smokes verified the fixes (validators, snowball, CSV perms, refresh hooks, MainWindow build/teardown, dialog validation).
+
+### Decisions
+- **Fixed the four views, not the gate** — added public `refresh()` aliases to preserve `_refresh_all`'s duck-typed pattern rather than special-casing it.
+- **`get_connection` wrapped, not all callers refactored** — a `@contextmanager` keeps `with conn` transaction semantics and adds deterministic close; all 60 callers already used `with`, so it was transparent.
+- **Snowball pre-mark over in-loop guard** — marking zero-balance debts `payoff_month=0` up front fixes both the phantom-payment roll-up and the None-in-sort risk in one place.
+
+### Issues / surprises
+- The stale-after-restore bug had been latent and even flagged as a "cautionary example" in past notes (`PaymentsView` has only `_refresh`) — but nobody had connected it to the restore path actually showing wrong data. The audit's verification of the restore flow is what surfaced it.
+
+### Next session
+- Net-worth trend view (still the top deferred item).
+- Optional: GUI eyeball of Charts/Expenses; decide whether the stacked over-time chart should also exclude Savings.
+
+**Commits**: `c5d9598` (1 commit) + this close
+
+---
+
 ## Session: 2026-06-22 — User-Managed Categories, Category Rename Migration, Savings-Calc Expenses, Two Skills
 
 **Focus**: Let the user manage their own spending categories, rename two of them cleanly, and make the savings calculator account for actual spending.

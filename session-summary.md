@@ -4,6 +4,35 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-07-16 — Improvement Sweep (Trend Chart, Filters, Multi-System Flake)
+
+**Focus**: User delegated an open-ended improvement pass — "take a deep look, implement all of them one by one, verify, commit."
+
+### What changed (and why)
+- **Net-worth trend chart** — the Charts tab now has Spending / Net Worth sub-tabs; the new chart finally shows the snapshots accruing since 2026-07-02. `snapshots.trend_segments()` (pure, unit-tested) breaks the line wherever adjacent snapshots are >7 days apart and a scatter overlay dots every point, so days the app never ran render as honest gaps instead of interpolation. This was project-state's short-term goal #1.
+- **Expenses tab filters** — "This month only" checkbox + live search, copied from the Payments pattern; expenses accumulated forever with no way to narrow them. First behavioral view tests added (`test_expenses_view.py`).
+- **Multi-system `flake.nix`** — packages/checks/devShells now generated per-system (`forAllSystems`, x86_64-linux + aarch64-linux) so an ARM machine could consume the flake unchanged; derivations identical, NixOS-side path untouched.
+- **One `money()` formatter** — the Expenses tab had drifted to `$1234.56`; all ~40 money displays across twelve view modules now route through `views/_table.money()`.
+- **CI confirmed green** on the real GitHub runner (first real `qt-launch` runs included) — closed old Next Steps #2 with no change.
+
+### Decisions
+- Skipped the interactive `/interview` — the user's mandate was explicit and complete, and the work was done strictly serially per instruction (each item verified via full pytest before its own commit; `nix flake check` as the final gate).
+- Trend gap threshold is 7 days (inclusive), one colour for all segments, Y axis floats around min/max (net worth can be negative), X axis padded a day so a lone snapshot isn't degenerate.
+- No Darwin in the flake systems list — PySide6/Qt wrapping there is unproven in nixpkgs and no Mac exists in the fleet.
+- money() sweep done fully (scripted regex + hand-checked diff) rather than half-converting — two live idioms would be worse than one.
+
+### Issues / surprises
+- None — all four items landed clean; tests 151 → 159, all passing.
+- Close-out note: `secret-scan` isn't available in this project's skill list, so the README public-safety pass was a manual grep for secret/IP/MAC patterns over the updated docs (clean).
+
+### Next session
+- Rebuild natalie-laptop (`nix flake update financeguru` in the NixOS repo) — still can't launch the app until it gets `517d45e`; the bump also ships this session's sweep.
+- Real-display GUI eyeball of the new trend chart + existing charts polish items; decide whether the stacked spending chart should exclude Savings.
+
+**Commits**: `3691ece..1ebac14` (4 commits)
+
+---
+
 ## Session: 2026-07-07 (evening) — qt-launch Regression Guard
 
 **Focus**: User asked whether anything else could mitigate the packaged-app Qt bug (fixed earlier this session) from recurring on this or other hosts.
@@ -100,34 +129,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - Bump the `financeguru` input in the NixOS repo + rebuild hosts so the machines start accruing snapshots/backups.
 
 **Commits**: `98dd868..e60442a` (2 commits) + this close
-
----
-
-## Session: 2026-06-26 — Whole-Codebase Audit (#4) + Fixes
-
-**Focus**: Run a full audit of the clean codebase and fix everything it surfaced.
-
-### What changed (and why)
-- **Audit fanned out across four parallel lenses** (data/SQL, network/prices, views/QThread, domain/money), then findings consolidated and all fixed in one commit (`c5d9598`). With a clean tree the diff-based `/security-review` and `/code-review` skills have nothing to review, so the pass leaned on the project risk checklist + the review sub-agents.
-- **One real correctness bug**: `MainWindow._refresh_all` duck-types `refresh()`, but `PaymentsView`/`StocksView`/`StockTipsView`/`DebtSnowballView` only had private `_refresh`/`_load`, so a **DB restore reported success while those four tabs kept showing pre-restore data**. Added the public alias to all four.
-- **Security/data**: CSV exports now created `0600` up front (no world-readable window) with header cells also `_csv_safe`'d; `get_connection` is a closing `@contextmanager`.
-- **Correctness**: snowball pre-marks zero-balance debts so they don't inflate the rolling pool; tighter ticker regex rejects degenerate symbols; analyst-count cells guarded against NaN; unknown income frequency logged to stderr.
-- **Quality**: deduped right/center cell builders into `views/_table.py`; chart axes `deleteLater()`'d on rebuild; `StockTipDialog` frees its prior fetcher; `bill_dialog`/`debt_dialog` name validation aligned; models default `category` from `DEFAULT_CATEGORY`; stale `GOAL_NOTE` comment fixed.
-- 113 tests still green; offscreen smokes verified the fixes (validators, snowball, CSV perms, refresh hooks, MainWindow build/teardown, dialog validation).
-
-### Decisions
-- **Fixed the four views, not the gate** — added public `refresh()` aliases to preserve `_refresh_all`'s duck-typed pattern rather than special-casing it.
-- **`get_connection` wrapped, not all callers refactored** — a `@contextmanager` keeps `with conn` transaction semantics and adds deterministic close; all 60 callers already used `with`, so it was transparent.
-- **Snowball pre-mark over in-loop guard** — marking zero-balance debts `payoff_month=0` up front fixes both the phantom-payment roll-up and the None-in-sort risk in one place.
-
-### Issues / surprises
-- The stale-after-restore bug had been latent and even flagged as a "cautionary example" in past notes (`PaymentsView` has only `_refresh`) — but nobody had connected it to the restore path actually showing wrong data. The audit's verification of the restore flow is what surfaced it.
-
-### Next session
-- Net-worth trend view (still the top deferred item).
-- Optional: GUI eyeball of Charts/Expenses; decide whether the stacked over-time chart should also exclude Savings.
-
-**Commits**: `c5d9598` (1 commit) + this close
 
 ---
 
