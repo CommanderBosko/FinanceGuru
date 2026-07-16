@@ -1,6 +1,8 @@
+from datetime import date
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
+    QCheckBox, QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -25,10 +27,19 @@ class ExpensesView(QWidget):
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
         self._btn_categories = QPushButton("Manage Categories…")
+        # Same filter pair as the Payments tab: expenses accumulate forever,
+        # so default to the current month and let search cut across history.
+        self._chk_current_only = QCheckBox("This month only")
+        self._chk_current_only.setChecked(True)
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
+        btn_bar.addWidget(self._chk_current_only)
         btn_bar.addStretch()
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search amounts, dates, categories, notes…")
+        self._search.setClearButtonEnabled(True)
+        btn_bar.addWidget(self._search)
         btn_bar.addWidget(self._btn_categories)
         layout.addLayout(btn_bar)
 
@@ -44,6 +55,8 @@ class ExpensesView(QWidget):
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
         self._btn_categories.clicked.connect(self._on_manage_categories)
+        self._chk_current_only.toggled.connect(self._refresh)
+        self._search.textChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
 
@@ -60,7 +73,14 @@ class ExpensesView(QWidget):
         self._refresh()
 
     def _refresh(self) -> None:
-        self._expenses = expense_repo.get_all()
+        expenses = expense_repo.get_all()
+        if self._chk_current_only.isChecked():
+            prefix = date.today().strftime("%Y-%m-")
+            expenses = [e for e in expenses if (e.spent_date or "").startswith(prefix)]
+        query = self._search.text().strip().lower()
+        if query:
+            expenses = [e for e in expenses if query in self._haystack(e)]
+        self._expenses = expenses
         self._table.setRowCount(len(self._expenses))
         for row, expense in enumerate(self._expenses):
             amount_item = QTableWidgetItem(f"${expense.amount:.2f}")
@@ -69,6 +89,16 @@ class ExpensesView(QWidget):
             self._table.setItem(row, 1, QTableWidgetItem(expense.spent_date))
             self._table.setItem(row, 2, QTableWidgetItem(expense.category))
             self._table.setItem(row, 3, QTableWidgetItem(expense.notes or ""))
+
+    @staticmethod
+    def _haystack(expense: Expense) -> str:
+        """Lowercased, searchable text spanning an expense's display fields."""
+        return " ".join((
+            f"${expense.amount:.2f}",
+            expense.spent_date or "",
+            expense.category or "",
+            expense.notes or "",
+        )).lower()
 
     def _selected_expense(self) -> Expense | None:
         row = self._table.currentRow()
