@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.payment_dialog import PaymentDialog
+from financeguru.views._table import money
 
 
 class PaymentsView(QWidget):
@@ -79,7 +80,7 @@ class PaymentsView(QWidget):
         self._rows = rows
         self._table.setRowCount(len(self._rows))
         for row, rec in enumerate(self._rows):
-            amount_item = QTableWidgetItem(f"${rec['amount']:,.2f}")
+            amount_item = QTableWidgetItem(money(rec['amount']))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             date_item = QTableWidgetItem(rec["paid_date"])
             date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -93,7 +94,7 @@ class PaymentsView(QWidget):
         """Lowercased, searchable text spanning a payment's display fields."""
         return " ".join((
             rec["bill_name"] or "Manual",
-            f"${rec['amount']:,.2f}",
+            money(rec['amount']),
             rec["paid_date"] or "",
             rec["notes"] or "",
         )).lower()
@@ -126,7 +127,7 @@ class PaymentsView(QWidget):
         answer = QMessageBox.question(
             self,
             "Delete Payment",
-            f"Delete this payment of ${rec['amount']:,.2f} on {rec['paid_date']}?",
+            f"Delete this payment of {money(rec['amount'])} on {rec['paid_date']}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:

@@ -12,7 +12,7 @@ from financeguru.money import ZERO, to_decimal
 from financeguru.prices import PriceFetcher, stop_fetcher
 from financeguru.repositories import snapshots as snapshot_repo
 from financeguru.repositories import stocks as stock_repo
-from financeguru.views._table import center, right
+from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_dialog import StockDialog
 
@@ -97,8 +97,8 @@ class StocksView(QWidget):
             shares_str = f"{stock.shares:,.4f}".rstrip("0").rstrip(".")
             self._table.setItem(row, 0, center(stock.ticker))
             self._table.setItem(row, 1, right(shares_str))
-            self._table.setItem(row, 2, right(f"${stock.purchase_price:,.2f}"))
-            self._table.setItem(row, 3, right(f"${cost_basis:,.2f}"))
+            self._table.setItem(row, 2, right(money(stock.purchase_price)))
+            self._table.setItem(row, 3, right(money(cost_basis)))
 
             if current is not None:
                 market_value = stock.shares * current
@@ -107,8 +107,8 @@ class StocksView(QWidget):
                 total_market += market_value
                 color = _GREEN if gain >= 0 else _RED
 
-                price_item = right(f"${current:,.2f}")
-                mv_item = right(f"${market_value:,.2f}")
+                price_item = right(money(current))
+                mv_item = right(money(market_value))
                 gain_item = right(f"${gain:+,.2f}")
                 pct_item = right(f"{gain_pct:+.2f}%")
                 for item in (gain_item, pct_item):
@@ -124,11 +124,11 @@ class StocksView(QWidget):
 
             self._table.setItem(row, 8, QTableWidgetItem(stock.notes or ""))
 
-        parts = [f"Cost basis: ${total_cost:,.2f}"]
+        parts = [f"Cost basis: {money(total_cost)}"]
         if has_prices and total_market:
             total_gain = total_market - total_cost
             pct = (total_gain / total_cost * 100) if total_cost else 0.0
-            parts.append(f"Market value: ${total_market:,.2f}")
+            parts.append(f"Market value: {money(total_market)}")
             parts.append(f"Total gain/loss: ${total_gain:+,.2f} ({pct:+.2f}%)")
         self._footer.setText("   |   ".join(parts))
 

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.stock_tip import StockTip
 from financeguru.prices import TipFetcher, stop_fetcher
 from financeguru.repositories import stock_tips as tips_repo
-from financeguru.views._table import center, right
+from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_tip_dialog import StockTipDialog
 
@@ -104,8 +104,8 @@ class StockTipsView(QWidget):
 
         stars = "★" * tip.confidence + "☆" * (5 - tip.confidence)
 
-        target_str = f"${tip.target_price:,.2f}" if tip.target_price else _PLACEHOLDER
-        analyst_target_str = f"${tip.analyst_target:,.2f}" if tip.analyst_target else _PLACEHOLDER
+        target_str = money(tip.target_price) if tip.target_price else _PLACEHOLDER
+        analyst_target_str = money(tip.analyst_target) if tip.analyst_target else _PLACEHOLDER
         analyst_count_str = str(tip.analyst_count) if tip.analyst_count else _PLACEHOLDER
 
         action_item = _colored(center(tip.action), tip.action)

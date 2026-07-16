@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.debt import Debt
 from financeguru.repositories import debts as debt_repo
 from financeguru.snowball import PayoffPlan, calculate, payoff_date
-from financeguru.views._table import center, right
+from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.debt_dialog import DebtDialog
 
@@ -213,9 +213,9 @@ class DebtSnowballView(QWidget):
         self._debt_table.setRowCount(len(self._debts))
         for row, debt in enumerate(self._debts):
             self._debt_table.setItem(row, 0, QTableWidgetItem(debt.name))
-            self._debt_table.setItem(row, 1, right(f"${debt.balance:,.2f}"))
+            self._debt_table.setItem(row, 1, right(money(debt.balance)))
             self._debt_table.setItem(row, 2, right(f"{debt.interest_rate:.2f}%"))
-            self._debt_table.setItem(row, 3, right(f"${debt.minimum_payment:,.2f}"))
+            self._debt_table.setItem(row, 3, right(money(debt.minimum_payment)))
             self._debt_table.setItem(row, 4, QTableWidgetItem(debt.notes or ""))
 
     def _selected_debt(self) -> Debt | None:
@@ -262,7 +262,7 @@ class DebtSnowballView(QWidget):
             month_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             date_item = QTableWidgetItem(payoff_date(month))
             date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            amount_item = QTableWidgetItem(f"${amount:,.2f}")
+            amount_item = QTableWidgetItem(money(amount))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self._lump_table.setItem(row, 0, month_item)
             self._lump_table.setItem(row, 1, date_item)
@@ -326,9 +326,9 @@ class DebtSnowballView(QWidget):
             table.setItem(row, 0, center(str(m.month)))
             table.setItem(row, 1, center(payoff_date(m.month)))
             for col, amount in enumerate(m.payments):
-                text = f"${amount:,.2f}" if amount > 0 else "—"
+                text = money(amount) if amount > 0 else "—"
                 table.setItem(row, 2 + col, right(text))
-            table.setItem(row, len(headers) - 1, right(f"${m.total:,.2f}"))
+            table.setItem(row, len(headers) - 1, right(money(m.total)))
 
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -343,11 +343,11 @@ class DebtSnowballView(QWidget):
         for row, r in enumerate(plan.debt_results):
             table.setItem(row, 0, center(str(row + 1)))
             table.setItem(row, 1, QTableWidgetItem(r.name))
-            table.setItem(row, 2, right(f"${r.original_balance:,.2f}"))
+            table.setItem(row, 2, right(money(r.original_balance)))
             table.setItem(row, 3, right(f"{r.apr:.2f}%"))
             table.setItem(row, 4, center(f"Month {r.payoff_month}"))
             table.setItem(row, 5, center(payoff_date(r.payoff_month)))
-            table.setItem(row, 6, right(f"${r.interest_paid:,.2f}"))
+            table.setItem(row, 6, right(money(r.interest_paid)))
 
         yrs, mos = divmod(plan.total_months, 12)
         duration = f"{yrs}y {mos}m" if yrs else f"{mos}m"
@@ -355,7 +355,7 @@ class DebtSnowballView(QWidget):
         cap_note = "  ⚠ 50-year cap reached" if plan.capped else ""
         summary.setText(
             f"Debt-free: {debt_free}  ({duration})   |   "
-            f"Total interest: ${plan.total_interest:,.2f}{cap_note}"
+            f"Total interest: {money(plan.total_interest)}{cap_note}"
         )
 
     def _fill_comparison(self, snowball: PayoffPlan, avalanche: PayoffPlan) -> None:
@@ -375,7 +375,7 @@ class DebtSnowballView(QWidget):
             saved = -int_diff
             months = -mo_diff
 
-        parts = [f"{winner} saves ${saved:,.2f} in interest vs {loser}"]
+        parts = [f"{winner} saves {money(saved)} in interest vs {loser}"]
         if months > 0:
             yrs, mos = divmod(months, 12)
             time_str = f"{yrs}y {mos}m" if yrs else f"{mos} month{'s' if mos != 1 else ''}"

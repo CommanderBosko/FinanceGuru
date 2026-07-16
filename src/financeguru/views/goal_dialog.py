@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 
 from financeguru.models.goal import Goal
 from financeguru.money import cents
+from financeguru.views._table import money
 
 
 def _end_of_month(d: QDate) -> QDate:
@@ -71,7 +72,7 @@ class GoalDialog(QDialog):
 
     def _update_monthly(self) -> None:
         monthly = self._build_goal().monthly_savings()
-        self._monthly.setText(f"${monthly:,.2f} / month")
+        self._monthly.setText(f"{money(monthly)} / month")
 
     def _build_goal(self) -> Goal:
         return Goal(

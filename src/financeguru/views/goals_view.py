@@ -12,7 +12,7 @@ from financeguru.money import ZERO
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
 from financeguru.repositories import payments as payment_repo
-from financeguru.views._table import center, right
+from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.goal_dialog import GoalDialog
 
@@ -74,11 +74,11 @@ class GoalsView(QWidget):
             left = max(goal.price - contributed, ZERO)
 
             self._table.setItem(row, 0, QTableWidgetItem(goal.name))
-            self._table.setItem(row, 1, right(f"${goal.price:,.2f}"))
-            self._table.setItem(row, 2, right(f"${left:,.2f}"))
+            self._table.setItem(row, 1, right(money(goal.price)))
+            self._table.setItem(row, 2, right(money(left)))
             self._table.setItem(row, 3, center(goal.target_date))
             self._table.setItem(row, 4, center(str(months_remaining(goal.target_date))))
-            self._table.setItem(row, 5, right(f"${goal.monthly_savings():,.2f}"))
+            self._table.setItem(row, 5, right(money(goal.monthly_savings())))
 
     def _selected_goal(self) -> Goal | None:
         row = self._table.currentRow()

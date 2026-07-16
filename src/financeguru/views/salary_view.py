@@ -14,7 +14,7 @@ from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import incomes as income_repo
-from financeguru.views._table import center, right
+from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
 
@@ -139,14 +139,14 @@ class SalaryView(QWidget):
         for row, inc in enumerate(self._incomes):
             monthly = monthly_income(inc)
             self._table.setItem(row, 0, QTableWidgetItem(inc.name))
-            self._table.setItem(row, 1, right(f"${inc.amount:,.2f}"))
+            self._table.setItem(row, 1, right(money(inc.amount)))
             if inc.frequency == SPECIFIC_DAYS:
                 days = format_pay_days(inc.pay_days)
                 freq_text = f"days {days}" if days else SPECIFIC_DAYS
             else:
                 freq_text = inc.frequency
             self._table.setItem(row, 2, center(freq_text))
-            self._table.setItem(row, 3, right(f"${monthly:,.2f}"))
+            self._table.setItem(row, 3, right(money(monthly)))
             self._table.setItem(row, 4, QTableWidgetItem(inc.notes or ""))
 
     def _recompute(self) -> None:
@@ -158,12 +158,12 @@ class SalaryView(QWidget):
         total_expenses = expense_repo.total_for_month(today.year, today.month)
         extra = total_income - total_bills - total_expenses
 
-        self._lbl_income.setText(f"Monthly Income\n${total_income:,.2f}")
-        self._lbl_bills.setText(f"Monthly Bills\n−${total_bills:,.2f}")
-        self._lbl_expenses.setText(f"This Month's Expenses\n−${total_expenses:,.2f}")
+        self._lbl_income.setText(f"Monthly Income\n{money(total_income)}")
+        self._lbl_bills.setText(f"Monthly Bills\n−{money(total_bills)}")
+        self._lbl_expenses.setText(f"This Month's Expenses\n−{money(total_expenses)}")
         extra_color = _GREEN if extra >= 0 else _RED
         label = "Extra Spending Money" if extra >= 0 else "Over Budget"
-        self._lbl_extra.setText(f"{label}\n${extra:,.2f}")
+        self._lbl_extra.setText(f"{label}\n{money(extra)}")
         self._lbl_extra.setStyleSheet(f"color: {extra_color};")
 
         self._update_savings(extra)
@@ -194,8 +194,8 @@ class SalaryView(QWidget):
         self._bar.setStretch(1, max(0, round(spend)))
 
         self._savings_detail.setText(
-            f"Set aside ${save:,.2f}/mo  (${save * 12:,.2f}/yr)"
-            f"   ·   Free to spend ${spend:,.2f}/mo"
+            f"Set aside {money(save)}/mo  ({money(save * 12)}/yr)"
+            f"   ·   Free to spend {money(spend)}/mo"
         )
 
     # ── Slots ─────────────────────────────────────────────────────────────

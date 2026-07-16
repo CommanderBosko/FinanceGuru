@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from financeguru.money import ZERO
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import payments as payment_repo
+from financeguru.views._table import money
 
 _GREEN = QColor("#2d9e2d")
 _RED = QColor("#c0392b")
@@ -100,7 +101,7 @@ class DashboardView(QWidget):
                 status = f"Due on {bill.due_day}"
                 color = _ORANGE if bill.due_day == today.day else None
 
-            amount_item = QTableWidgetItem(f"${bill.amount:,.2f}")
+            amount_item = QTableWidgetItem(money(bill.amount))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             due_item = QTableWidgetItem(str(bill.due_day))
             due_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -124,7 +125,7 @@ class DashboardView(QWidget):
             row = len(bills) + offset
             month_abbr = date(int(cycle_start[:4]), int(cycle_start[5:7]), 1).strftime("%b")
 
-            amount_item = QTableWidgetItem(f"${bill.amount:,.2f}")
+            amount_item = QTableWidgetItem(money(bill.amount))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             due_item = QTableWidgetItem(f"{month_abbr} {bill.due_day}")
             due_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -142,6 +143,6 @@ class DashboardView(QWidget):
             total += bill.amount
 
         remaining = total - paid
-        self._lbl_total.setText(f"Total Bills\n${total:,.2f}")
-        self._lbl_paid.setText(f"Paid\n${paid:,.2f}")
-        self._lbl_remaining.setText(f"Remaining\n${remaining:,.2f}")
+        self._lbl_total.setText(f"Total Bills\n{money(total)}")
+        self._lbl_paid.setText(f"Paid\n{money(paid)}")
+        self._lbl_remaining.setText(f"Remaining\n{money(remaining)}")

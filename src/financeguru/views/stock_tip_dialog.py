@@ -11,6 +11,7 @@ from financeguru.models.stock_tip import StockTip
 from financeguru.money import cents
 from financeguru.prices import TipFetcher, stop_fetcher
 from financeguru.validators import normalize_ticker
+from financeguru.views._table import money
 
 _ACTIONS = ["Watch", "Buy", "Strong Buy", "Hold", "Sell", "Strong Sell"]
 
@@ -105,7 +106,7 @@ class StockTipDialog(QDialog):
             parts.append(f"consensus: {info['action']}")
         if info.get("target"):
             self._target.setValue(info["target"])
-            parts.append(f"target: ${info['target']:,.2f}")
+            parts.append(f"target: {money(info['target'])}")
         if info.get("count"):
             parts.append(f"{info['count']} analysts")
         self._fetch_status.setText(", ".join(parts) if parts else "No analyst data found.")

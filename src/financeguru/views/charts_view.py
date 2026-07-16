@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from financeguru import reporting
 from financeguru.repositories import categories as category_repo
 from financeguru.repositories import snapshots as snapshot_repo
+from financeguru.views._table import money
 
 _WINDOW = 12
 
@@ -260,7 +261,7 @@ class ChartsView(QWidget):
             amt = breakdown[cat]
             if amt <= 0:
                 continue
-            slice_ = series.append(f"{cat}: ${amt:,.2f}", amt)
+            slice_ = series.append(f"{cat}: {money(amt)}", amt)
             slice_.setLabelVisible(True)
 
         chart.addSeries(series)

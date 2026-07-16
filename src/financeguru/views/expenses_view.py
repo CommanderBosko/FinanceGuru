@@ -11,6 +11,7 @@ from financeguru.repositories import expenses as expense_repo
 from financeguru.views.category_dialog import CategoryDialog
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.expense_dialog import ExpenseDialog
+from financeguru.views._table import money
 
 
 class ExpensesView(QWidget):
@@ -83,7 +84,7 @@ class ExpensesView(QWidget):
         self._expenses = expenses
         self._table.setRowCount(len(self._expenses))
         for row, expense in enumerate(self._expenses):
-            amount_item = QTableWidgetItem(f"${expense.amount:.2f}")
+            amount_item = QTableWidgetItem(money(expense.amount))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self._table.setItem(row, 0, amount_item)
             self._table.setItem(row, 1, QTableWidgetItem(expense.spent_date))
@@ -94,7 +95,7 @@ class ExpensesView(QWidget):
     def _haystack(expense: Expense) -> str:
         """Lowercased, searchable text spanning an expense's display fields."""
         return " ".join((
-            f"${expense.amount:.2f}",
+            money(expense.amount),
             expense.spent_date or "",
             expense.category or "",
             expense.notes or "",
@@ -138,7 +139,7 @@ class ExpensesView(QWidget):
         answer = QMessageBox.question(
             self,
             "Delete Expense",
-            f"Delete this ${expense.amount:.2f} expense?",
+            f"Delete this {money(expense.amount)} expense?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if answer == QMessageBox.StandardButton.Yes:

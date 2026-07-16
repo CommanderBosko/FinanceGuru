@@ -12,6 +12,7 @@ from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.bill_dialog import BillDialog
 from financeguru.views.context_menu import attach_row_menu
+from financeguru.views._table import money
 
 
 class BillsView(QWidget):
@@ -67,7 +68,7 @@ class BillsView(QWidget):
         self._bills = bill_repo.get_all()
         self._table.setRowCount(len(self._bills))
         for row, bill in enumerate(self._bills):
-            amount_item = QTableWidgetItem(f"${bill.amount:,.2f}")
+            amount_item = QTableWidgetItem(money(bill.amount))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             due_item = QTableWidgetItem(str(bill.due_day))
             due_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
