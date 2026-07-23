@@ -24,6 +24,13 @@ Other invariants to respect:
 - Category columns on `bills`/`expenses` are **free text, not foreign keys**. Deleting/renaming a category does not cascade — you must re-tag rows yourself if you want existing records updated.
 - `_CORE_TABLES` is the set restore validation requires. **Do not add a newly-seeded table to it** — `restore_database()` re-runs `init_db()` at the end, so an older backup that lacks the new table is still valid and will gain it. Adding it to `_CORE_TABLES` would wrongly reject good backups.
 
+## Arguments
+
+Usually fully described in the user's request rather than named as flags, but confirm both before touching `db.py`:
+
+- **The change** — new table, new column, a rename/data fixup, or new seed/default rows (drives which phase(s) in step 1 apply).
+- **Re-tag existing records?** — for a rename/fixup, whether existing rows should be updated to the new value (a complete rename) or left alone (picker-only rename). See step 3.
+
 ## Steps
 
 1. **Classify the change.** Pick the phase(s) you need:

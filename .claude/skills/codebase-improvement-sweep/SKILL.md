@@ -9,6 +9,10 @@ Find a batch of independent improvements across the project and land each one as
 
 This is not `audit` (review-only, produces a findings report, never edits code) and not `simplify` (cleans up an already-written diff, doesn't go looking for new work). Run this when the user wants improvements *found and landed*, not just flagged.
 
+## Arguments
+
+- **Scope** (optional) — a specific area the user already named, e.g. "improve the Expenses tab" or "just tests/". When given, don't widen recon beyond it (see Before starting). When omitted, recon runs across the whole project per step 1's area list.
+
 ## Before starting
 
 - **Scope it first.** If the user's request is as open-ended as "find improvements," that's fine — the fuzziness is expected here, this skill *is* the scoping mechanism. But if they've already named a specific area (e.g. "improve the Expenses tab"), don't widen the recon beyond it.

@@ -9,6 +9,15 @@ A grep → generated-script → verify loop for bulk mechanical changes: the sam
 
 This is not `simplify` (which cleans up an already-written diff) and not `codebase-improvement-sweep` (which discovers *what* to change across the whole project). Reach for this once the *what* is already named — a specific pattern to replace everywhere.
 
+## Arguments
+
+The whole job hinges on these two inputs, which the user supplies in their request — confirm both before writing a script:
+
+- **Pattern** — the thing to find (a call convention, a deprecated helper, an inconsistent formatting expression), e.g. "every `f'{x:.2f}'` money format" or "every `Optional[X]` type hint".
+- **Replacement** — what it becomes, e.g. "route through `money()`" or "`X | None`".
+
+If the user's request only names one side, ask before writing the rewrite script.
+
 ## Steps
 
 1. **Enumerate occurrences.** Grep the named pattern across the relevant directories (usually `src/financeguru/`) to find every call site. Read enough surrounding context at a sample of them to confirm the replacement is safe everywhere — if the call sites are too inconsistent in shape for one mechanical rule to apply to all of them, stop and do it as a manual edit instead; this skill is for genuinely uniform patterns only.

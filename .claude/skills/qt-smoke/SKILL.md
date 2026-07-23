@@ -9,6 +9,13 @@ Verify a PySide6 widget (a view, dialog, or `MainWindow`) actually constructs an
 
 This fills a gap the other skills don't: `/run` launches the app with a real display, and `/verify` is generic. This drives the specific Qt-on-nix pattern FinanceGuru needs (Qt only exists inside `nix develop`, and we must never touch the user's real `finance.db`).
 
+## Arguments
+
+Every real invocation supplies this context, even though it's usually given as prose rather than a flag:
+
+- **Widget** — which view/dialog/`MainWindow` to construct.
+- **Behavior to assert** — the specific observable outcome to check (a row's visibility, a table's contents, a getter's value, clean teardown). If the caller doesn't supply this, step 1 asks for it.
+
 ## Steps
 
 1. **Figure out what to assert.** From the change under review, pick the concrete, observable behaviour to check — e.g. a dialog row's visibility per recurrence, the set of rows a table shows after seeding data, or that teardown (`stop_threads()` / `done()`) runs without aborting. If it's unclear, ask the user what "working" looks like for this widget.

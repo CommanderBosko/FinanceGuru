@@ -9,6 +9,10 @@ Take a feature from request to a committed, verified change, moving through Fina
 
 It composes the other skills: hand schema work to `db-migration`, prove the UI with `qt-smoke`, and run `audit` before committing anything security- or money-sensitive.
 
+## Arguments
+
+- **Feature description** — what the user wants built, in their own words (e.g. "add a Goals tab", "track recurring transfers"). Usually all the input this skill needs; everything else (model shape, schema, layers touched) is derived from it per the checklist below.
+
 ## Before building
 
 - **Scope it first.** Per CLAUDE.md, use `/interview` if the goal is fuzzy, and state a `/verify` plan up front — name the exact checks (pytest, qt-smoke, running the app) you'll use to call it done.
