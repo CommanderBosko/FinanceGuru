@@ -11,34 +11,23 @@ This exists because `wrapQtAppsHook`'s automatic wrap pass can silently fail for
 
 ## Steps
 
-1. **Build and capture the store path:**
+1. **Run the mechanical build-and-inspect pass:**
    ```bash
-   OUT=$(nix build .#default --no-link --print-out-paths)
+   scripts/qt-nix-wrapper-diagnose.sh
    ```
+   (relative to this skill's directory, run from anywhere — it `cd`s to the repo root itself). This does steps 1–4 in one shot: builds `.#default`, lists `$OUT/bin` to show the wrapper chain, `strings`-greps the outermost wrapper for the Qt env vars, and live-runs the binary under a 5s timeout. Confirm it exits `0` and printed all four `--- N. ... ---` sections before trusting its output.
 
-2. **List the bin directory to see the wrapper chain:**
-   ```bash
-   find "$OUT/bin" -maxdepth 1
-   ```
-   Expect the visible binary (`financeguru`) plus at least one hidden `.financeguru-wrapped` file. If there were multiple wrap passes (e.g. after a `postFixup` wrap on top of the Python wrap), you'll also see `.financeguru-wrapped_` — that's the earlier wrapper, chained.
+2. **Interpret the bin-directory listing** (its `--- 2. ---` section): expect the visible binary (`financeguru`) plus at least one hidden `.financeguru-wrapped` file. If there were multiple wrap passes (e.g. a `postFixup` wrap on top of the Python wrap), you'll also see `.financeguru-wrapped_` — that's the earlier wrapper, chained.
 
-3. **Inspect what env vars are actually baked into the outermost wrapper.** `strings`/`file` aren't on the bare host `PATH` — run inside `nix develop`:
-   ```bash
-   nix develop -c bash -c "strings '$OUT/bin/financeguru' | grep -E 'QT_PLUGIN_PATH|LD_LIBRARY_PATH|QT_QPA|XDG_DATA_DIRS'"
-   ```
-   Confirm:
+3. **Interpret the env-var grep** (its `--- 3. ---` section). Confirm:
    - `QT_PLUGIN_PATH` is present and points at a `qtbase`/`.../lib/qt-6/plugins` path.
    - Any runtime-`dlopen`ed libs the platform plugins need are on `LD_LIBRARY_PATH` — at minimum `libxcb-cursor` for xcb/wayland.
-   If there's a wrap chain (step 2 showed `.financeguru-wrapped_`), `strings` each link — the chain should be additive (each wrapper's `setenv`/`prefix` calls survive the `execv` into the next), not one wrapper overwriting another's vars.
+   `(no matches)` here means the wrapper is missing the Qt env entirely — go to step 6.
+   If there's a wrap chain (step 2 showed `.financeguru-wrapped_`), the script only greps the outermost wrapper; re-run `strings` on each `.financeguru-wrapped*` file by hand if you need to confirm the chain is additive (each wrapper's `setenv`/`prefix` calls survive the `execv` into the next) rather than one overwriting another's vars.
 
-4. **Actually run the built binary — a live smoke test, not just a static check:**
-   ```bash
-   timeout 5 "$OUT/bin/financeguru" > /tmp/fg-wrapper-check.log 2>&1
-   echo "exit: $?"; cat /tmp/fg-wrapper-check.log
-   ```
-   Exit code `124` (killed by `timeout`, i.e. it stayed running) with an empty log = success. An immediate exit with a Qt platform-plugin error on stderr = still broken — go to step 6.
+4. **Interpret the live-run result** (its `--- 4. ---` section). Exit code `124` (killed by `timeout`, i.e. it stayed running) with an empty log = success. An immediate exit with a Qt platform-plugin error on stderr = still broken — go to step 6.
 
-   This exact live-run is now automated as the `checks.${system}.qt-launch` derivation in `flake.nix` (added after the 2026-07-07 incident), run under `xvfb-run` with `QT_QPA_PLATFORM=xcb` so it also exercises the `libxcb-cursor` dlopen path, not just plugin-path resolution. It runs on every `nix flake check`, including CI (`.github/workflows/ci.yml`). Step 4 above is still useful for interactive debugging (faster iteration, no Xvfb), but a regression should now fail CI on its own before it reaches a real machine.
+   This exact live-run is now automated as the `checks.${system}.qt-launch` derivation in `flake.nix` (added after the 2026-07-07 incident), run under `xvfb-run` with `QT_QPA_PLATFORM=xcb` so it also exercises the `libxcb-cursor` dlopen path, not just plugin-path resolution. It runs on every `nix flake check`, including CI (`.github/workflows/ci.yml`). Steps 1–4 above are still useful for interactive debugging (faster iteration, no Xvfb), but a regression should now fail CI on its own before it reaches a real machine.
 
 5. **Run the full check suite:**
    ```bash
@@ -63,3 +52,7 @@ This exists because `wrapQtAppsHook`'s automatic wrap pass can silently fail for
 ## Arguments
 
 None — this skill is hardcoded to FinanceGuru's single `packages.${system}.default` output and its one binary, `bin/financeguru`. It is not parameterized for other binaries or a multi-output flake; if this repo ever grows a second packaged binary, the paths in Steps 2–4 would need to be adapted per-binary.
+
+## Scripts
+
+- `scripts/qt-nix-wrapper-diagnose.sh` — no arguments. Builds `.#default`, lists the bin directory, greps the outermost wrapper for Qt env vars, and live-runs the binary under a 5s timeout, printing all four sections. Called by step 1; steps 2–4 interpret its output.
