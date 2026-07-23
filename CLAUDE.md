@@ -25,6 +25,10 @@ Reserve serial work for genuine dependencies — e.g. a new file and the line el
 
 Before doing a task by hand, check whether an existing skill already covers it and invoke it instead of improvising. Skills encode the agreed, repeatable way to do a thing — prefer them over ad-hoc steps. If you find yourself doing the same multi-step task a second time and no skill exists, offer to create one.
 
+## Ask via AskUserQuestion
+
+When you need a decision, choice, or clarification from the user — not just information you can look up yourself — use the **AskUserQuestion** tool rather than asking in plain text. Phrase it as 2-4 concrete options (with a recommended one first); when the answer could be open-ended, the tool's built-in "Other" choice covers free text. This keeps answers structured, makes trade-offs explicit, and avoids an answer getting buried in prose. Reserve plain-text questions for genuinely open, generative prompts where no sensible options exist yet (e.g. "describe the project in your own words").
+
 ## Project
 
 FinanceGuru is a personal finance desktop app for two users (bosko and natty). The original four feature areas are all built and shipped:
