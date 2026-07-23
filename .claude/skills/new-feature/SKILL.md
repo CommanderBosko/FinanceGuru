@@ -18,7 +18,7 @@ It composes the other skills: hand schema work to `db-migration`, prove the UI w
 
 Each layer depends on the one before it, so build bottom-up.
 
-1. **Model** — `src/financeguru/models/<thing>.py`. A plain `@dataclass`, money fields typed `Decimal`, `id: Optional[int] = None` last (matches `Expense`, `Bill`). No behavior.
+1. **Model** — `src/financeguru/models/<thing>.py`. A plain `@dataclass`, money fields typed `Decimal`, `id: int | None = None` last (matches `Expense`, `Bill`). No behavior.
 
 2. **Schema** — if the feature needs a new table or column, **invoke the `db-migration` skill** rather than hand-editing `db.py`. It covers `init_db()` ordering, idempotent migrations for existing DBs, free-text re-tagging, and the `_CORE_TABLES` rule. If the feature stores nothing new, skip this layer.
 
