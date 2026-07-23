@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
 
 @dataclass
@@ -16,4 +15,4 @@ class Snapshot:
     debt_total: Decimal       # Σ debt balances
     goal_savings: Decimal     # Σ payments against goal-linked bills
     net_worth: Decimal        # stock_value − debt_total + goal_savings
-    id: Optional[int] = None
+    id: int | None = None

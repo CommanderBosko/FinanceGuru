@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_UP, Decimal
-from typing import Optional
 
 from financeguru.money import CENT
 
@@ -24,9 +23,9 @@ class Goal:
     name: str
     price: Decimal
     target_date: str          # ISO yyyy-mm-dd — when you want to afford it
-    notes: Optional[str] = None
-    bill_id: Optional[int] = None   # the auto-created "Goal" bill that saves for it
-    id: Optional[int] = None
+    notes: str | None = None
+    bill_id: int | None = None   # the auto-created "Goal" bill that saves for it
+    id: int | None = None
 
     def monthly_savings(self, today: date | None = None) -> Decimal:
         """Amount to set aside each month to afford the goal by its target date.

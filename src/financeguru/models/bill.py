@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
 from financeguru.categories import DEFAULT_CATEGORY
 
@@ -12,15 +11,15 @@ class Bill:
     due_day: int
     # Calendar month (1-12) a yearly or one-time bill falls due. None for
     # monthly bills, which are due every month.
-    due_month: Optional[int] = None
+    due_month: int | None = None
     # Calendar year a one-time bill falls due. None for monthly/yearly bills,
     # which recur and so aren't pinned to a single year.
-    due_year: Optional[int] = None
+    due_year: int | None = None
     recurrence: str = "monthly"
     is_active: bool = True
-    notes: Optional[str] = None
+    notes: str | None = None
     category: str = DEFAULT_CATEGORY
-    id: Optional[int] = None
+    id: int | None = None
 
     def is_due_in(self, year: int, month: int) -> bool:
         """Whether this bill's schedule places it in the given calendar month.
