@@ -18,9 +18,10 @@ Read the optional argument; default is `full`.
 ## Steps
 
 ### 1. Determine scope and show it
-- Working-tree diff (default when the tree is dirty): `git status --short` + `git diff --stat`.
-- Branch-vs-main (when on a feature branch and the tree is clean): `git diff main...HEAD --stat`.
-- Whole-tree (only when explicitly asked, e.g. "audit the whole codebase"): review `src/financeguru/` in full.
+Run `scripts/determine-scope.sh` (relative to this skill's directory) — it prints `git status --short`, `git diff --stat`, and `git diff --stat main...HEAD` in one shot. Then pick which result actually applies:
+- Working-tree diff (default when the tree is dirty): use the `git status --short` + `git diff --stat` output.
+- Branch-vs-main (when on a feature branch and the tree is clean): use the `main...HEAD` output.
+- Whole-tree (only when explicitly asked, e.g. "audit the whole codebase"): ignore the script's output and review `src/financeguru/` in full instead.
 
 State plainly what is being audited before going further.
 
@@ -59,3 +60,7 @@ State plainly what is being audited before going further.
 - **PySide6 and yfinance only exist inside `nix develop`.** Run all Python/pytest via `nix develop --command ...`. LSP/Pyright "could not be resolved" errors for `PySide6.*` and `yfinance` are expected and not findings.
 - **`/code-review ultra` is billed/cloud and user-triggered** — never invoke it from this skill; use the local `/code-review`.
 - **Review-first.** Present findings and offer to fix. Don't start editing the working tree until the user gives the go-ahead.
+
+## Scripts
+
+- `scripts/determine-scope.sh` — no arguments. Prints `git status --short`, `git diff --stat`, and `git diff --stat main...HEAD` in one call. Called by step 1; step 1 decides which output actually applies.
