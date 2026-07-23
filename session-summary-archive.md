@@ -1,3 +1,33 @@
+## Session: 2026-07-02 — Net-Worth Snapshots, Auto Backups, Smoke Tests, CI, Overdue Bills (closed 2026-07-03)
+
+**Focus**: "What would you improve?" → all five answers shipped as one scoped effort: snapshot data layer, rotating backups, view smoke tests, flake-check CI, and overdue bills that stop vanishing.
+
+### What changed (and why)
+- **Daily net-worth snapshots** (`snapshots` table + repo, captured at launch and after a full price refresh, same-day upsert): the trend chart can't be back-filled — stocks store only purchase price — so every week without the table was history lost forever. Data layer ships now; the chart comes once history has accrued.
+- **Automatic rotating backups**: `auto_backup()` at launch, deliberately *before* `init_db()` so the copy captures the pre-migration database; skip-if-today's-exists; keep 14; pruning can never touch `.pre-restore-*.bak` safety copies. Protects against the failure mode manual backups never cover.
+- **Overdue one-time/yearly bills persist until paid** as "Overdue (Month)" dashboard rows, cycle-scoped paid check (a 2025 payment can't satisfy the 2026 cycle), counted in Total/Remaining. Was silently dropping unpaid bills once their month passed — late-fee territory.
+- **View smoke tests** (`test_views_smoke.py` + shared session `QApplication` fixture): MainWindow + every tab constructed offscreen, public `refresh()` contract locked in — the exact contract whose violation was audit #4's only real bug.
+- **CI**: `checks.x86_64-linux.{package,pytest}` in the flake (sandboxed offscreen pytest) + a thin GitHub Action running `nix flake check`, so local verification and CI are the same command. 151 tests total (was 113).
+- Also in this close range: `98dd868` (2026-06-29, `/improve-system` maintenance — CLAUDE.md sync + pytest permission allowlist).
+
+### Decisions
+- Goal savings computed live via `goals.bill_id`; deleted goals drop out of future snapshots, past rows immutable. Accepted: "tracked net worth" (no cash/property), per-machine gap-filled series.
+- Launch hooks in `main.py`, not `MainWindow`, so tests constructing the window never write backups/snapshots.
+- Reviewer's TEXT-money-column suggestion rejected — project convention is `REAL` + the `Decimal` adapter.
+
+### Issues / surprises
+- The session **hit its usage limit** right after implementation — verification, commit, and close all happened next session (2026-07-03). Everything then verified clean: 151 tests, `nix flake check`, and the real launch sequence driven twice against a throwaway `$HOME` (backup rotation, snapshot dedup, 10 tabs offscreen).
+- The brief-review agent found 7 genuine ambiguities pre-build (goal-deletion semantics, backup ordering, cycle scoping) — settling them up front meant zero mid-build design stalls.
+
+### Next session
+- Check the first real CI run went green on GitHub Actions.
+- Net-worth trend chart over the accruing snapshots.
+- Bump the `financeguru` input in the NixOS repo + rebuild hosts so the machines start accruing snapshots/backups.
+
+**Commits**: `98dd868..e60442a` (2 commits) + this close
+
+---
+
 ## Session: 2026-06-26 — Whole-Codebase Audit (#4) + Fixes
 
 **Focus**: Run a full audit of the clean codebase and fix everything it surfaced.

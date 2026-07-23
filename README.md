@@ -4,7 +4,7 @@ A personal finance desktop application for two users (bosko and natty). Tracks r
 
 ## Current Status
 
-Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The Charts tab now includes a **net-worth trend chart** drawn from the daily snapshots the app has been recording since 2026-07-02, rendered gap-honestly (no interpolation across days the app didn't run). The app records that snapshot and takes an automatic rotating backup at every launch, and CI (`nix flake check` via GitHub Actions) runs the package build, the full test suite, and a real launch of the packaged binary on every push. The flake's outputs are generated for both `x86_64-linux` and `aarch64-linux`. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 159-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, offscreen smoke tests of every view, and behavioral tests of the Expenses filters. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
+Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The Charts tab now includes a **net-worth trend chart** drawn from the daily snapshots the app has been recording since 2026-07-02, rendered gap-honestly (no interpolation across days the app didn't run). The app records that snapshot and takes an automatic rotating backup at every launch, and CI (`nix flake check` via GitHub Actions) runs the package build, the full test suite, and a real launch of the packaged binary on every push. The flake's outputs are generated for both `x86_64-linux` and `aarch64-linux`. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 160-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, offscreen smoke tests of every view, and behavioral tests of the Expenses filters. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
 
 ## Features
 
@@ -144,6 +144,11 @@ share/
 ```
 
 ## Recent Changes
+
+**2026-07-23 — Skill-Library Maintenance (Internal)**
+
+- Internal only, no user-facing changes: shipped two new project-local Claude-skills (`codebase-improvement-sweep`, `mechanical-sweep-refactor`) and ran a `skill-audit` sweep across all 7 project-local skills, fixing a stale doc, adding missing argument docs, and extracting two scripts.
+- The skills' own smoke tests did close one real gap: a test now covers the debt-snowball simulator's `capped=True` path (a debt whose minimum payment can never outpace its interest), and a mechanical sweep modernized `Optional[X]` type hints to `X | None` across all data models. Suite 159 → 160 tests, all green.
 
 **2026-07-16 — Net-Worth Trend Chart, Expenses Filters, Multi-System Flake**
 

@@ -4,6 +4,31 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-07-23 — Two New Skills + Skill-Audit Sweep
+
+**Focus**: User asked for `/skill-suggestion` and `/skill-upgrade` ideas mined from session logs since their last run, then to build and ship the resulting candidates, then to `/skill-audit` the whole project-local skill set.
+
+### What changed (and why)
+- **Two new project-local skills shipped via `/ship-skill`** (draft → real smoke test → commit → push): `codebase-improvement-sweep` packages the "find independent improvements, implement/verify/commit each" loop that had already fired twice ad-hoc (most recently the 2026-07-16 session); `mechanical-sweep-refactor` packages the grep→disposable-script→diff-spot-check→verify loop for bulk mechanical changes.
+- **Both smoke tests were real work, not toy scenarios**: `codebase-improvement-sweep`'s smoke test added a genuinely missing test (`test_debt_that_never_amortizes_is_capped`, closing a gap where the snowball simulator's 600-month `capped=True` path had no coverage); `mechanical-sweep-refactor`'s smoke test swept `typing.Optional[X]` → `X | None` across all 21 occurrences in `models/`, catching and fixing a real bug in its own first-draft rewrite script (a dead-import check that read its own already-substituted text and never dropped the now-unused `Optional` import) along the way.
+- **`skill-audit` swept all 7 project-local skills** (`audit`, `codebase-improvement-sweep`, `db-migration`, `mechanical-sweep-refactor`, `new-feature`, `qt-nix-wrapper-diagnose`, `qt-smoke`) via 4 parallel fork agents on disjoint groups. Found and fixed: one real doc/code drift (`new-feature` still documented the pre-sweep `id: Optional[int] = None` convention), 5 skills missing a documented `## Arguments` section, and 2 fixed command sequences re-typed in prose every run (`qt-nix-wrapper-diagnose`'s build+inspect pass, `audit`'s scope detection) — both extracted to `scripts/` and re-run live to confirm they still match what the prose expects.
+
+### Decisions
+- Skill-audit's 4 fork groups were kept strictly disjoint (no file owned by two agents) so a later fix pass can't collide — same rationale as the 2026-07-04/07-07 `/improve-system` parallel-audit sessions.
+- `## Arguments` additions are prose sections, deliberately not an `arguments:` YAML frontmatter key — that isn't a supported SKILL.md feature.
+- Skipped as low-value: `codebase-improvement-sweep`'s hardcoded recon-area list (minor drift risk, a one-line catch-all would cover it) and the duplicated `pytest` verify command across the two new skills (too trivial to extract).
+
+### Issues / surprises
+- The audit's one real bug was self-inflicted within the same session: `mechanical-sweep-refactor`'s own smoke test had already swept the exact `Optional[X]` pattern out of `models/` that `new-feature/SKILL.md` was still documenting as convention. A good illustration of why this audit is worth re-running after any sweep that touches a documented convention.
+- The mechanical sweep's generated script had a real bug caught by its own diff-spot-check step (see above) — validates that step's inclusion in the skill rather than being purely ceremonial.
+
+### Next session
+- No app-facing next steps from this session — natalie-laptop rebuild, the Charts/Expenses GUI eyeball, and multi-user partitioning (from 2026-07-16) are all still open and untouched.
+
+**Commits**: `4057536..68db9e0` (8 commits)
+
+---
+
 ## Session: 2026-07-16 — Improvement Sweep (Trend Chart, Filters, Multi-System Flake)
 
 **Focus**: User delegated an open-ended improvement pass — "take a deep look, implement all of them one by one, verify, commit."
@@ -99,36 +124,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - (unrelated to this session) Check CI went green on GitHub Actions; build the net-worth trend chart; bump the `financeguru` input in the NixOS repo.
 
 **Commits**: `2b9efdc..fadd318` (2 commits)
-
----
-
-## Session: 2026-07-02 — Net-Worth Snapshots, Auto Backups, Smoke Tests, CI, Overdue Bills (closed 2026-07-03)
-
-**Focus**: "What would you improve?" → all five answers shipped as one scoped effort: snapshot data layer, rotating backups, view smoke tests, flake-check CI, and overdue bills that stop vanishing.
-
-### What changed (and why)
-- **Daily net-worth snapshots** (`snapshots` table + repo, captured at launch and after a full price refresh, same-day upsert): the trend chart can't be back-filled — stocks store only purchase price — so every week without the table was history lost forever. Data layer ships now; the chart comes once history has accrued.
-- **Automatic rotating backups**: `auto_backup()` at launch, deliberately *before* `init_db()` so the copy captures the pre-migration database; skip-if-today's-exists; keep 14; pruning can never touch `.pre-restore-*.bak` safety copies. Protects against the failure mode manual backups never cover.
-- **Overdue one-time/yearly bills persist until paid** as "Overdue (Month)" dashboard rows, cycle-scoped paid check (a 2025 payment can't satisfy the 2026 cycle), counted in Total/Remaining. Was silently dropping unpaid bills once their month passed — late-fee territory.
-- **View smoke tests** (`test_views_smoke.py` + shared session `QApplication` fixture): MainWindow + every tab constructed offscreen, public `refresh()` contract locked in — the exact contract whose violation was audit #4's only real bug.
-- **CI**: `checks.x86_64-linux.{package,pytest}` in the flake (sandboxed offscreen pytest) + a thin GitHub Action running `nix flake check`, so local verification and CI are the same command. 151 tests total (was 113).
-- Also in this close range: `98dd868` (2026-06-29, `/improve-system` maintenance — CLAUDE.md sync + pytest permission allowlist).
-
-### Decisions
-- Goal savings computed live via `goals.bill_id`; deleted goals drop out of future snapshots, past rows immutable. Accepted: "tracked net worth" (no cash/property), per-machine gap-filled series.
-- Launch hooks in `main.py`, not `MainWindow`, so tests constructing the window never write backups/snapshots.
-- Reviewer's TEXT-money-column suggestion rejected — project convention is `REAL` + the `Decimal` adapter.
-
-### Issues / surprises
-- The session **hit its usage limit** right after implementation — verification, commit, and close all happened next session (2026-07-03). Everything then verified clean: 151 tests, `nix flake check`, and the real launch sequence driven twice against a throwaway `$HOME` (backup rotation, snapshot dedup, 10 tabs offscreen).
-- The brief-review agent found 7 genuine ambiguities pre-build (goal-deletion semantics, backup ordering, cycle scoping) — settling them up front meant zero mid-build design stalls.
-
-### Next session
-- Check the first real CI run went green on GitHub Actions.
-- Net-worth trend chart over the accruing snapshots.
-- Bump the `financeguru` input in the NixOS repo + rebuild hosts so the machines start accruing snapshots/backups.
-
-**Commits**: `98dd868..e60442a` (2 commits) + this close
 
 ---
 
