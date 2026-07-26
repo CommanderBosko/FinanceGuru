@@ -9,7 +9,7 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 # Pathspecs excluded from plaintext-pattern scans. Always exclude this skill's own
 # directory (its docs legitimately contain example secret patterns) plus whatever
 # the project's encrypted-secrets directory is, if any.
-EXCLUDE=(':!.claude/skills/')
+EXCLUDE=(':!.claude/skills/secret-scan/')
 
 # Encrypted-secret integrity check (pass 2). If the project has no dedicated
 # secret-encryption scheme (sops, git-crypt, transcrypt, ...), leave both blank —
