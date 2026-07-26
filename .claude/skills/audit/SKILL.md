@@ -35,7 +35,7 @@ State plainly what is being audited before going further.
   - **Network / yfinance:** tickers validated by `normalize_ticker` before reaching a request URL or the DB; fetched prices/targets sanity-checked finite and `> 0`; raw exceptions go to stderr, never the UI.
   - **QThread lifecycle:** every fetcher thread is stopped on teardown. `MainWindow.closeEvent` drives `stop_threads()` on the views (child widgets in a `QTabWidget` never receive their own `closeEvent`); dialogs stop their fetcher in `done()`; `stop_fetcher` cancels then waits (bounded, then unbounded fallback). Confirm no `QThread` can be destroyed while still running.
   - **Money:** amounts are `Decimal` end to end (`money.to_decimal` / `cents`), stored as REAL, coerced back at the repository boundary — never raw `float` arithmetic on money.
-  - **Migrations:** new columns added via `_ensure_column` in `db.py:init_db` (idempotent, identifier-guarded); the `init_db` schema is updated to match; the existing-DB upgrade path is considered.
+  - **Migrations:** new columns added via `_ensure_column` in `db.py:init_db` (idempotent, identifier-guarded); the `init_db` schema is updated to match; the existing-DB upgrade path is considered. For the full migration procedure and its current invariants, defer to the **`db-migration`** skill rather than this checklist — this bullet is a quick pass/fail check, not the source of truth.
 
 ### 3. Prove it runs
 - Run the suite: `nix develop --command python -m pytest -q` — report the pass/fail count.
