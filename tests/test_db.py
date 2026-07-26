@@ -15,6 +15,13 @@ from financeguru.models.payment import Payment
 from financeguru.repositories import bills, payments
 
 
+def _assert_owner_only_mode(path, expected: str) -> None:
+    """POSIX-only: Windows chmod/stat semantics don't map to octal owner bits."""
+    if sys.platform == "win32":
+        return
+    assert oct(path.stat().st_mode)[-3:] == expected
+
+
 def _seed():
     bill_id = bills.add(Bill(name="Power", amount=Decimal("80.00"), due_day=15))
     payments.add(Payment(amount=Decimal("80.00"), paid_date="2026-06-01", bill_id=bill_id))
@@ -56,6 +63,32 @@ def test_default_db_dir_matches_legacy_hardcoded_linux_path(tmp_path):
     assert produced == legacy
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific path shape")
+def test_default_db_dir_matches_windows_localappdata(tmp_path):
+    fake_local_appdata = tmp_path / "AppData" / "Local"
+    fake_local_appdata.mkdir(parents=True)
+    env = {**os.environ, "LOCALAPPDATA": str(fake_local_appdata)}
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import financeguru.db as db; print(db.DB_DIR)"],
+        env=env, capture_output=True, text=True, check=True,
+    )
+    assert result.stdout.strip() == str(fake_local_appdata / "financeguru")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific path shape")
+def test_default_db_dir_matches_macos_application_support(tmp_path):
+    fake_home = tmp_path / "home" / "testuser"
+    fake_home.mkdir(parents=True)
+    env = {**os.environ, "HOME": str(fake_home)}
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import financeguru.db as db; print(db.DB_DIR)"],
+        env=env, capture_output=True, text=True, check=True,
+    )
+    assert result.stdout.strip() == str(fake_home / "Library" / "Application Support" / "financeguru")
+
+
 # --- backup / restore ------------------------------------------------------
 
 def test_backup_creates_a_readable_copy_with_the_data(tmp_path):
@@ -64,7 +97,7 @@ def test_backup_creates_a_readable_copy_with_the_data(tmp_path):
     db.backup_database(dest)
 
     assert dest.exists()
-    assert oct(dest.stat().st_mode)[-3:] == "600"
+    _assert_owner_only_mode(dest, "600")
     con = sqlite3.connect(dest)
     try:
         rows = con.execute("SELECT name FROM bills").fetchall()
@@ -115,8 +148,8 @@ def test_auto_backup_writes_dated_owner_only_copy():
     assert dest is not None
     assert dest.parent == db.DB_DIR / "backups"
     assert dest.name == f"financeguru-auto-{datetime.now():%Y%m%d}.db"
-    assert oct(dest.stat().st_mode)[-3:] == "600"
-    assert oct(dest.parent.stat().st_mode)[-3:] == "700"
+    _assert_owner_only_mode(dest, "600")
+    _assert_owner_only_mode(dest.parent, "700")
     con = sqlite3.connect(dest)
     try:
         assert con.execute("SELECT name FROM bills").fetchall() == [("Power",)]
@@ -173,7 +206,7 @@ def test_export_writes_one_csv_per_table_with_headers(tmp_path):
     names = {p.name for p in written}
     assert {f"{t}.csv" for t in _CORE_TABLES} <= names
     for path in written:
-        assert oct(path.stat().st_mode)[-3:] == "600"
+        _assert_owner_only_mode(path, "600")
 
     bills_csv = out / "bills.csv"
     with open(bills_csv, newline="", encoding="utf-8") as f:

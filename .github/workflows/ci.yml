@@ -42,3 +42,50 @@ jobs:
         with:
           name: financeguru-flatpak
           path: financeguru.flatpak
+
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: pip install -r packaging/pyinstaller/requirements.txt
+      - name: Run test suite on real Windows Python (headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest
+      - run: python packaging/pyinstaller/make_icons.py
+      - run: pyinstaller packaging/pyinstaller/financeguru.spec --noconfirm
+      - name: Smoke-launch the frozen build
+        run: python packaging/pyinstaller/smoke_launch.py dist/FinanceGuru/FinanceGuru.exe
+      - run: Compress-Archive -Path dist/FinanceGuru -DestinationPath FinanceGuru-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: financeguru-windows
+          path: FinanceGuru-windows.zip
+
+  macos-package:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: pip install -r packaging/pyinstaller/requirements.txt
+      - name: Run test suite on real macOS Python (headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest
+      - run: python packaging/pyinstaller/make_icons.py
+      - run: pyinstaller packaging/pyinstaller/financeguru.spec --noconfirm
+      - name: Smoke-launch the frozen build
+        run: python packaging/pyinstaller/smoke_launch.py "dist/FinanceGuru.app/Contents/MacOS/FinanceGuru"
+      - name: Zip the .app (ditto preserves bundle structure/xattrs; plain zip -r can corrupt it)
+        run: ditto -c -k --sequesterRsrc --keepParent dist/FinanceGuru.app FinanceGuru-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: financeguru-macos
+          path: FinanceGuru-macos.zip

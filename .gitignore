@@ -14,6 +14,10 @@ build-dir/
 repo/
 *.flatpak
 
+# PyInstaller build output (Windows/macOS packaging; dist/ and build/ are
+# already ignored above)
+packaging/pyinstaller/build-assets/
+
 # Never commit the financial database (lives in ~/.local/share by default,
 # but guard against accidental copies into the tree)
 *.db
