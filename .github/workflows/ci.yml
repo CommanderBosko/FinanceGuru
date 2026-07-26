@@ -16,15 +16,18 @@ jobs:
 
   flatpak-check:
     runs-on: ubuntu-latest
+    # flatpak-builder needs a privileged, purpose-built environment to install
+    # runtime deps from Flathub — a bare ubuntu-latest runner's non-root user
+    # hits polkit "system operation not allowed" errors doing that install
+    # (the flatpak/flatpak-github-actions org that our earlier @v6 pin used is
+    # deprecated in favor of flathub-infra, whose own docs recommend this
+    # container image + --privileged setup).
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
+      options: --privileged
     steps:
       - uses: actions/checkout@v4
-      - name: Install flatpak and flatpak-builder
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder xvfb
-          sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@933e9e8ca36e85046ebca8e211f0785c6becac40
         with:
           bundle: financeguru.flatpak
           manifest-path: packaging/flatpak/io.github.CommanderBosko.FinanceGuru.yml

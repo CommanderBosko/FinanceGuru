@@ -5,6 +5,7 @@ import subprocess
 import sys
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -44,6 +45,7 @@ def test_csv_safe_leaves_ordinary_values_untouched():
 
 # --- DB path portability ----------------------------------------------------
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-specific path shape")
 def test_default_db_dir_matches_legacy_hardcoded_linux_path(tmp_path):
     """DB_DIR must stay byte-identical to the old hardcoded
     ~/.local/share/financeguru — bosko and natty have real production
@@ -64,16 +66,18 @@ def test_default_db_dir_matches_legacy_hardcoded_linux_path(tmp_path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific path shape")
-def test_default_db_dir_matches_windows_localappdata(tmp_path):
-    fake_local_appdata = tmp_path / "AppData" / "Local"
-    fake_local_appdata.mkdir(parents=True)
-    env = {**os.environ, "LOCALAPPDATA": str(fake_local_appdata)}
-
+def test_default_db_dir_matches_windows_localappdata():
+    # platformdirs resolves the Windows path via the native SHGetKnownFolderPath
+    # API, not by reading %LOCALAPPDATA% out of the process environment — so
+    # unlike the Linux/macOS parity tests, overriding the env var in the
+    # subprocess has no effect. Assert against the real LOCALAPPDATA instead,
+    # which is what the OS API resolves to anyway.
     result = subprocess.run(
         [sys.executable, "-c", "import financeguru.db as db; print(db.DB_DIR)"],
-        env=env, capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True,
     )
-    assert result.stdout.strip() == str(fake_local_appdata / "financeguru")
+    expected = Path(os.environ["LOCALAPPDATA"]) / "financeguru"
+    assert result.stdout.strip() == str(expected)
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific path shape")
