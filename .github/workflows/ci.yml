@@ -16,16 +16,24 @@ jobs:
 
   flatpak-check:
     runs-on: ubuntu-latest
+    # flatpak-builder needs a privileged, purpose-built environment to install
+    # runtime deps from Flathub — a bare ubuntu-latest runner's non-root user
+    # hits polkit "system operation not allowed" errors doing that install
+    # (the flatpak/flatpak-github-actions org that our earlier @v6 pin used is
+    # deprecated in favor of flathub-infra, whose own docs recommend this
+    # container image + --privileged setup).
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
+      options: --privileged
     steps:
       - uses: actions/checkout@v4
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@933e9e8ca36e85046ebca8e211f0785c6becac40
         with:
           bundle: financeguru.flatpak
           manifest-path: packaging/flatpak/io.github.CommanderBosko.FinanceGuru.yml
           cache: true
       - name: Launch under Xvfb to prove it actually starts
         run: |
-          sudo apt-get update && sudo apt-get install -y xvfb
           flatpak install --user --bundle -y financeguru.flatpak
           set +e
           xvfb-run -a bash -c \
@@ -42,3 +50,52 @@ jobs:
         with:
           name: financeguru-flatpak
           path: financeguru.flatpak
+
+  windows-package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: pip install pytest
+      - run: pip install -r packaging/pyinstaller/requirements.txt
+      - name: Run test suite on real Windows Python (headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest
+      - run: python packaging/pyinstaller/make_icons.py
+      - run: pyinstaller packaging/pyinstaller/financeguru.spec --noconfirm
+      - name: Smoke-launch the frozen build
+        run: python packaging/pyinstaller/smoke_launch.py dist/FinanceGuru/FinanceGuru.exe
+      - run: Compress-Archive -Path dist/FinanceGuru -DestinationPath FinanceGuru-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: financeguru-windows
+          path: FinanceGuru-windows.zip
+
+  macos-package:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: pip install pytest
+      - run: pip install -r packaging/pyinstaller/requirements.txt
+      - name: Run test suite on real macOS Python (headless)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest
+      - run: python packaging/pyinstaller/make_icons.py
+      - run: pyinstaller packaging/pyinstaller/financeguru.spec --noconfirm
+      - name: Smoke-launch the frozen build
+        run: python packaging/pyinstaller/smoke_launch.py "dist/FinanceGuru.app/Contents/MacOS/FinanceGuru"
+      - name: Zip the .app (ditto preserves bundle structure/xattrs; plain zip -r can corrupt it)
+        run: ditto -c -k --sequesterRsrc --keepParent dist/FinanceGuru.app FinanceGuru-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: financeguru-macos
+          path: FinanceGuru-macos.zip

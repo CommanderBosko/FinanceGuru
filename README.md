@@ -24,7 +24,7 @@ Active development — ten tabs fully implemented (Dashboard, Bills, Payments, E
 - **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells — headers included — sanitized against formula injection, each file created `0600` so it's never briefly world-readable), and Quit (Ctrl+Q).
 - **App icon** — Custom green-dollar SVG icon in the system app menu, window title bar, and taskbar. Loaded via `QIcon.fromTheme` with SVG fallback for dev mode. Correctly installed into the Nix store prefix.
 - **NixOS packaging** — `buildPythonApplication` target in `flake.nix`; installs desktop entry and icon into the system prefix. Packages, checks, and devShells are generated per-system (`x86_64-linux` and `aarch64-linux`), so an ARM host can consume the flake unchanged.
-- **CI** — `nix flake check` builds the package, runs the full pytest suite headlessly in the Nix sandbox, and actually launches the packaged binary under a virtual display (`xvfb-run` + `xcb`) to confirm its Qt runtime environment works, not just that it builds; a GitHub Actions workflow runs it on every push and pull request.
+- **CI** — four GitHub Actions jobs run on every push and pull request: `flake-check` (`nix flake check` — builds the package, runs the full pytest suite headlessly in the Nix sandbox, and actually launches the packaged binary under a virtual display to confirm its Qt runtime environment works); `flatpak-check` (builds and launches the Flatpak under Xvfb); `windows-package` and `macos-package` (PyInstaller builds on the real hosted runners, running the full pytest suite natively on each OS, then a headless smoke launch of the frozen build). All four upload their build artifact.
 
 ## Getting Started
 
@@ -56,6 +56,18 @@ flatpak install --user financeguru.flatpak
 flatpak run io.github.CommanderBosko.FinanceGuru
 ```
 
+### Installation (Windows)
+
+Download `financeguru-windows.zip` from the latest [GitHub Actions run](https://github.com/CommanderBosko/FinanceGuru/actions) (or an attached Release asset, once one exists), unzip it, and run `FinanceGuru.exe` inside.
+
+The build isn't code-signed yet, so Windows will show a "Windows protected your PC" SmartScreen warning on first launch — this is expected for a new, low-download app, not a sign of a problem. Click **More info**, then **Run anyway**.
+
+### Installation (macOS)
+
+Download `financeguru-macos.zip` from the latest [GitHub Actions run](https://github.com/CommanderBosko/FinanceGuru/actions) (or an attached Release asset, once one exists), unzip it, and move `FinanceGuru.app` wherever you like (e.g. `/Applications`).
+
+The build isn't notarized, so macOS will refuse to open it with a plain double-click ("FinanceGuru.app cannot be opened because it is from an unidentified developer"). Instead, right-click (or Control-click) the app and choose **Open**, then confirm in the dialog that appears. This is only needed once per machine. Note: `macos-latest` GitHub Actions runners are Apple Silicon (arm64) only, so this build targets Apple Silicon Macs.
+
 ### Development
 
 ```bash
@@ -77,7 +89,7 @@ nix flake update
 
 ### Configuration
 
-The SQLite database is created automatically at first run, in the OS-appropriate per-user data directory (resolved via `platformdirs`):
+The SQLite database is created automatically at first run, in the OS-appropriate per-user data directory (resolved via `platformdirs`, verified in CI on real Windows and macOS runners as well as Linux):
 
 ```
 Linux:   ~/.local/share/financeguru/finance.db   (or $XDG_DATA_HOME/financeguru/finance.db if set)
@@ -148,10 +160,20 @@ src/financeguru/
 share/
 ├── applications/
 │   └── financeguru.desktop       # XDG desktop entry for app menu
-└── icons/hicolor/scalable/apps/
-    └── financeguru.svg           # Custom green-dollar app icon
+└── icons/hicolor/
+    ├── scalable/apps/financeguru.svg    # Custom green-dollar app icon (Nix/dev/Flatpak fallback)
+    └── 128x128/apps/financeguru.png     # Rasterized icon (Flatpak AppStream export, PyInstaller .ico/.icns source)
+packaging/
+├── flatpak/
+│   ├── io.github.CommanderBosko.FinanceGuru.yml           # Flatpak manifest
+│   └── io.github.CommanderBosko.FinanceGuru.metainfo.xml  # AppStream metadata
+└── pyinstaller/
+    ├── requirements.txt           # Build-only deps (pyinstaller, pillow) — not a runtime dependency
+    ├── make_icons.py              # Generates .ico/.icns from the 128x128 PNG
+    ├── financeguru.spec           # Single spec, sys.platform-branched, drives both Windows and macOS
+    └── smoke_launch.py            # Cross-platform headless launch-and-stay-alive check (no GNU timeout/xvfb-run needed)
 .github/workflows/
-└── ci.yml                        # GitHub Actions — runs `nix flake check` on push/PR
+└── ci.yml                        # GitHub Actions — flake-check, flatpak-check, windows-package, macos-package
 ```
 
 ## Recent Changes

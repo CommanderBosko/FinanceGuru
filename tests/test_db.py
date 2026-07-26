@@ -5,6 +5,7 @@ import subprocess
 import sys
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +14,13 @@ from financeguru.db import _CORE_TABLES, _csv_safe
 from financeguru.models.bill import Bill
 from financeguru.models.payment import Payment
 from financeguru.repositories import bills, payments
+
+
+def _assert_owner_only_mode(path, expected: str) -> None:
+    """POSIX-only: Windows chmod/stat semantics don't map to octal owner bits."""
+    if sys.platform == "win32":
+        return
+    assert oct(path.stat().st_mode)[-3:] == expected
 
 
 def _seed():
@@ -37,6 +45,7 @@ def test_csv_safe_leaves_ordinary_values_untouched():
 
 # --- DB path portability ----------------------------------------------------
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux-specific path shape")
 def test_default_db_dir_matches_legacy_hardcoded_linux_path(tmp_path):
     """DB_DIR must stay byte-identical to the old hardcoded
     ~/.local/share/financeguru — bosko and natty have real production
@@ -56,6 +65,34 @@ def test_default_db_dir_matches_legacy_hardcoded_linux_path(tmp_path):
     assert produced == legacy
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific path shape")
+def test_default_db_dir_matches_windows_localappdata():
+    # platformdirs resolves the Windows path via the native SHGetKnownFolderPath
+    # API, not by reading %LOCALAPPDATA% out of the process environment — so
+    # unlike the Linux/macOS parity tests, overriding the env var in the
+    # subprocess has no effect. Assert against the real LOCALAPPDATA instead,
+    # which is what the OS API resolves to anyway.
+    result = subprocess.run(
+        [sys.executable, "-c", "import financeguru.db as db; print(db.DB_DIR)"],
+        capture_output=True, text=True, check=True,
+    )
+    expected = Path(os.environ["LOCALAPPDATA"]) / "financeguru"
+    assert result.stdout.strip() == str(expected)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific path shape")
+def test_default_db_dir_matches_macos_application_support(tmp_path):
+    fake_home = tmp_path / "home" / "testuser"
+    fake_home.mkdir(parents=True)
+    env = {**os.environ, "HOME": str(fake_home)}
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import financeguru.db as db; print(db.DB_DIR)"],
+        env=env, capture_output=True, text=True, check=True,
+    )
+    assert result.stdout.strip() == str(fake_home / "Library" / "Application Support" / "financeguru")
+
+
 # --- backup / restore ------------------------------------------------------
 
 def test_backup_creates_a_readable_copy_with_the_data(tmp_path):
@@ -64,7 +101,7 @@ def test_backup_creates_a_readable_copy_with_the_data(tmp_path):
     db.backup_database(dest)
 
     assert dest.exists()
-    assert oct(dest.stat().st_mode)[-3:] == "600"
+    _assert_owner_only_mode(dest, "600")
     con = sqlite3.connect(dest)
     try:
         rows = con.execute("SELECT name FROM bills").fetchall()
@@ -115,8 +152,8 @@ def test_auto_backup_writes_dated_owner_only_copy():
     assert dest is not None
     assert dest.parent == db.DB_DIR / "backups"
     assert dest.name == f"financeguru-auto-{datetime.now():%Y%m%d}.db"
-    assert oct(dest.stat().st_mode)[-3:] == "600"
-    assert oct(dest.parent.stat().st_mode)[-3:] == "700"
+    _assert_owner_only_mode(dest, "600")
+    _assert_owner_only_mode(dest.parent, "700")
     con = sqlite3.connect(dest)
     try:
         assert con.execute("SELECT name FROM bills").fetchall() == [("Power",)]
@@ -173,7 +210,7 @@ def test_export_writes_one_csv_per_table_with_headers(tmp_path):
     names = {p.name for p in written}
     assert {f"{t}.csv" for t in _CORE_TABLES} <= names
     for path in written:
-        assert oct(path.stat().st_mode)[-3:] == "600"
+        _assert_owner_only_mode(path, "600")
 
     bills_csv = out / "bills.csv"
     with open(bills_csv, newline="", encoding="utf-8") as f:

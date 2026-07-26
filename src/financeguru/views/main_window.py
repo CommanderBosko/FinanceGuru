@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +22,19 @@ from financeguru.views.salary_view import SalaryView
 from financeguru.views.stock_tips_view import StockTipsView
 from financeguru.views.stocks_view import StocksView
 
-_ICON_FALLBACK = Path(__file__).parents[3] / "share" / "icons" / "hicolor" / "scalable" / "apps" / "financeguru.svg"
+def _icon_fallback_path() -> Path:
+    # PyInstaller sets sys._MEIPASS in BOTH onefile (temp extraction dir) and
+    # onedir (dist folder) mode — checking it covers both without a separate
+    # sys.frozen branch. Never set in dev/Nix/Flatpak runs, where the
+    # source-tree-relative SVG lookup below is unchanged. PNG (not SVG) is
+    # used when frozen since it needs no Qt SVG plugin to rasterize.
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass) / "financeguru.png"
+    return Path(__file__).parents[3] / "share" / "icons" / "hicolor" / "scalable" / "apps" / "financeguru.svg"
+
+
+_ICON_FALLBACK = _icon_fallback_path()
 
 
 class MainWindow(QMainWindow):
