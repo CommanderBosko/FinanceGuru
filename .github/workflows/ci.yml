@@ -18,6 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install flatpak and flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder xvfb
+          sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: financeguru.flatpak
@@ -25,7 +31,6 @@ jobs:
           cache: true
       - name: Launch under Xvfb to prove it actually starts
         run: |
-          sudo apt-get update && sudo apt-get install -y xvfb
           flatpak install --user --bundle -y financeguru.flatpak
           set +e
           xvfb-run -a bash -c \
@@ -51,6 +56,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .
+      - run: pip install pytest
       - run: pip install -r packaging/pyinstaller/requirements.txt
       - name: Run test suite on real Windows Python (headless)
         env:
@@ -74,6 +80,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .
+      - run: pip install pytest
       - run: pip install -r packaging/pyinstaller/requirements.txt
       - name: Run test suite on real macOS Python (headless)
         env:
