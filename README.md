@@ -10,7 +10,7 @@ Active development — ten tabs fully implemented (Dashboard, Bills, Payments, E
 
 - **Dashboard** — Bills actually due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Monthly bills appear every month, yearly bills only in their due month, and one-time bills only in their exact month and year. Unpaid one-time and yearly bills from past months are carried over as "Overdue (Month)" rows until paid — they never silently vanish — and count toward the Total/Remaining summary. Auto-refreshes on tab focus.
 - **Net-worth snapshots** — A daily snapshot (stock value, debt total, goal savings, net worth) is recorded automatically at launch and updated after a full price refresh; the Charts tab's Net Worth view draws this history. One row per day; past rows are immutable.
-- **Automatic backups** — A rotating daily backup is written at every launch (before any schema migration runs, so a bad migration is always recoverable) to `~/.local/share/financeguru/backups/`, keeping the newest 14. Manual pre-restore safety copies are never pruned.
+- **Automatic backups** — A rotating daily backup is written at every launch (before any schema migration runs, so a bad migration is always recoverable) to a `backups/` folder alongside the database (see Configuration below for the OS-specific location), keeping the newest 14. Manual pre-restore safety copies are never pruned.
 - **Bills** — Full CRUD for recurring bills (name, amount, due day, recurrence, category). Recurrence is schedule-aware: `monthly` bills recur every month, `yearly` bills carry a due month, and `one-time` bills carry a full due month + year (the dialog reveals the right pickers per recurrence). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
 - **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A "This month only" checkbox (on by default) filters the list to the current calendar month; uncheck to see the full history. A live search bar filters by bill name, amount, date, or notes.
 - **Expenses** — Log one-off, non-recurring expenses (amount, date, category, notes) with full Add/Edit/Delete CRUD, double-click to edit, and a right-click context menu. A "This month only" checkbox (on by default) scopes the table to the current calendar month, and a live search bar filters by amount, date, category, or notes — the same filter pair as the Payments tab. Categories are **user-managed**: a "Manage Categories…" button opens a dialog to add, rename, and delete categories (seeded with Housing, Utilities, Groceries, Restaurants, Transport, Health, Entertainment, Pets, Savings, Other). Savings and Other are protected (the reporting layer depends on them) and can't be renamed or deleted.
@@ -47,6 +47,15 @@ Then add to `environment.systemPackages`:
 inputs.financeguru.packages.x86_64-linux.default
 ```
 
+### Installation (Flatpak)
+
+Download the `financeguru.flatpak` bundle from the latest [GitHub Actions run](https://github.com/CommanderBosko/FinanceGuru/actions) (or an attached Release asset, once one exists), then install it locally:
+
+```bash
+flatpak install --user financeguru.flatpak
+flatpak run io.github.CommanderBosko.FinanceGuru
+```
+
 ### Development
 
 ```bash
@@ -68,10 +77,12 @@ nix flake update
 
 ### Configuration
 
-The SQLite database is created automatically at first run:
+The SQLite database is created automatically at first run, in the OS-appropriate per-user data directory (resolved via `platformdirs`):
 
 ```
-~/.local/share/financeguru/finance.db
+Linux:   ~/.local/share/financeguru/finance.db   (or $XDG_DATA_HOME/financeguru/finance.db if set)
+Windows: %LOCALAPPDATA%\financeguru\finance.db
+macOS:   ~/Library/Application Support/financeguru/finance.db
 ```
 
 No manual configuration is required. New columns added between versions are applied automatically via idempotent `ALTER TABLE` migrations on startup.
@@ -177,4 +188,4 @@ _Earlier session entries (including 2026-07-04's devShell Qt fix, 2026-07-02's s
 
 ## License
 
-Personal use. No license declared.
+MIT — see [LICENSE](LICENSE).

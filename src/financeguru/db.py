@@ -9,6 +9,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Generator
 
+import platformdirs
+
 from financeguru.categories import CATEGORIES, PROTECTED_CATEGORIES
 
 
@@ -37,7 +39,7 @@ def _csv_safe(value):
 # how to bind a Decimal parameter. Cent-quantized values round-trip exactly.
 sqlite3.register_adapter(Decimal, float)
 
-DB_DIR = Path.home() / ".local" / "share" / "financeguru"
+DB_DIR = Path(platformdirs.user_data_dir("financeguru", appauthor=False))
 DB_PATH = DB_DIR / "finance.db"
 
 

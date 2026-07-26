@@ -1,5 +1,8 @@
 import csv
+import os
 import sqlite3
+import subprocess
+import sys
 from datetime import datetime
 from decimal import Decimal
 
@@ -30,6 +33,27 @@ def test_csv_safe_leaves_ordinary_values_untouched():
     assert _csv_safe("") == ""
     assert _csv_safe(80.0) == 80.0
     assert _csv_safe(None) is None
+
+
+# --- DB path portability ----------------------------------------------------
+
+def test_default_db_dir_matches_legacy_hardcoded_linux_path(tmp_path):
+    """DB_DIR must stay byte-identical to the old hardcoded
+    ~/.local/share/financeguru — bosko and natty have real production
+    databases at that exact path on gaming and natalie-laptop.
+    """
+    fake_home = tmp_path / "home" / "testuser"
+    fake_home.mkdir(parents=True)
+    env = {**os.environ, "HOME": str(fake_home)}
+    env.pop("XDG_DATA_HOME", None)
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import financeguru.db as db; print(db.DB_DIR)"],
+        env=env, capture_output=True, text=True, check=True,
+    )
+    produced = result.stdout.strip()
+    legacy = str(fake_home / ".local" / "share" / "financeguru")
+    assert produced == legacy
 
 
 # --- backup / restore ------------------------------------------------------

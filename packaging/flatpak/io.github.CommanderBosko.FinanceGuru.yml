@@ -1,0 +1,36 @@
+app-id: io.github.CommanderBosko.FinanceGuru
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: "6.11"
+command: financeguru
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+
+modules:
+  - name: financeguru
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --no-build-isolation --prefix=/app "platformdirs>=4,<5" .
+      - install -Dm644 share/applications/financeguru.desktop
+          /app/share/applications/io.github.CommanderBosko.FinanceGuru.desktop
+      - sed -i "s/^Icon=financeguru$/Icon=io.github.CommanderBosko.FinanceGuru/"
+          /app/share/applications/io.github.CommanderBosko.FinanceGuru.desktop
+      - install -Dm644 share/icons/hicolor/128x128/apps/financeguru.png
+          /app/share/icons/hicolor/128x128/apps/financeguru.png
+      - install -Dm644 share/icons/hicolor/128x128/apps/financeguru.png
+          /app/share/icons/hicolor/128x128/apps/io.github.CommanderBosko.FinanceGuru.png
+      - install -Dm644 packaging/flatpak/io.github.CommanderBosko.FinanceGuru.metainfo.xml
+          /app/share/metainfo/io.github.CommanderBosko.FinanceGuru.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..

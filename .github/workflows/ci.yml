@@ -13,3 +13,32 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v16
       - uses: DeterminateSystems/magic-nix-cache-action@v9
       - run: nix flake check
+
+  flatpak-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: financeguru.flatpak
+          manifest-path: packaging/flatpak/io.github.CommanderBosko.FinanceGuru.yml
+          cache: true
+      - name: Launch under Xvfb to prove it actually starts
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb
+          flatpak install --user --bundle -y financeguru.flatpak
+          set +e
+          xvfb-run -a bash -c \
+            "timeout 5 flatpak run --env=QT_QPA_PLATFORM=offscreen io.github.CommanderBosko.FinanceGuru"
+          status=$?
+          set -e
+          # timeout's 124 means the app launched and was still running when we
+          # killed it — that's success, mirroring the Nix qt-launch check.
+          if [ "$status" -ne 124 ]; then
+            echo "financeguru exited early (code $status) instead of staying up under Xvfb"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: financeguru-flatpak
+          path: financeguru.flatpak

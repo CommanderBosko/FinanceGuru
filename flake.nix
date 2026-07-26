@@ -22,6 +22,7 @@
         pythonDeps = ps: with ps; [
           pyside6
           yfinance
+          platformdirs
         ];
       });
   in {
@@ -61,6 +62,8 @@
             $out/share/applications/financeguru.desktop
           install -Dm644 share/icons/hicolor/scalable/apps/financeguru.svg \
             $out/share/icons/hicolor/scalable/apps/financeguru.svg
+          install -Dm644 share/icons/hicolor/128x128/apps/financeguru.png \
+            $out/share/icons/hicolor/128x128/apps/financeguru.png
         '';
 
         # Runs after wrapPythonPrograms, so this is the last wrap applied —

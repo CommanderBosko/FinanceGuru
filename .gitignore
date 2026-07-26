@@ -8,6 +8,12 @@ build/
 result
 result-*
 
+# Local Flatpak build/test artifacts (flatpak-builder, exported repo, bundle)
+.flatpak-builder/
+build-dir/
+repo/
+*.flatpak
+
 # Never commit the financial database (lives in ~/.local/share by default,
 # but guard against accidental copies into the tree)
 *.db
