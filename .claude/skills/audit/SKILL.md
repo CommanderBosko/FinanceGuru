@@ -48,7 +48,7 @@ State plainly what is being audited before going further.
   - 🟡 **minor / edge case / quality** — worth a look
   - 🟢 **clean** — what's holding up well (note the strong points briefly)
 - Every finding cites `file:line`.
-- End with an explicit offer to fix, and note the user can say "fix all" or "fix N" to proceed.
+- End by offering to fix via the **AskUserQuestion** tool: options **Fix all**, **Fix 🔴 only**, and **Don't fix — just report** (use "Other" for a specific subset of findings by number).
 
 ### 5. Respect the mode
 - `quick` → step 1 + risk checklist + step 3 (tests), then report.
