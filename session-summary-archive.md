@@ -1,3 +1,50 @@
+## Session: 2026-07-07 — Packaged-App Qt Fix + `/improve-system` Sweep
+
+**Focus**: Fix the *installed* FinanceGuru package failing to launch on natalie-laptop (`no Qt platform plugin could be initialized`), then run a full `/improve-system` maintenance sweep.
+
+### What changed (and why)
+- **Fixed `packages.${system}.default` in `flake.nix`** — the 2026-07-04 devShell fix never touched the actual packaged app. Root cause: `wrapQtAppsHook`'s automatic wrap pass runs *before* `buildPythonApplication`'s own Python wrap, so the Qt env vars it sets (`QT_PLUGIN_PATH` included) were silently dropped from the final wrapper — `nix build` succeeded with no error while the app was still fundamentally broken. `libxcb-cursor.so` was also still missing from the closure. Fix: `dontWrapQtApps = true` + an explicit `postFixup` re-wrap after the Python wrap, so the Qt args land last.
+- **Verified by inspecting the built wrapper directly** (`strings` on `bin/financeguru` inside `nix develop`) and actually running the binary live on this machine's Wayland session, not just trusting `nix build`'s exit code.
+- **New skill: `qt-nix-wrapper-diagnose`** — captures this diagnostic technique; `wrapQtAppsHook` issues showed up in 11 of ~20 past FinanceGuru sessions per transcript grep, so this is a real recurring pain point, not a one-off.
+- **`/improve-system` full 5-skill sweep**: added a Gotcha to the `interview` skill (NixOS repo) about scaling the ceremony down for well-scoped technical fixes; skill-audit (3 parallel sub-agents) found zero correctness bugs across all 5 project-local skills — `new-feature` now delegates commits to `git-commit`, `db-migration`/`qt-smoke` had duplicated code templates extracted to `assets/`, `audit`'s `## Modes` renamed to `## Arguments`; claude-rules and fewer-permission-prompts both came back clean.
+
+### Decisions
+- Scoped via a deliberately lightweight `/interview` (two `AskUserQuestion` prompts, not the full Project Brief + second-AI-review ceremony) since this was a single, already-diagnosed bug — captured as a Gotcha so future sessions know when this is appropriate.
+- Held all four skill-audit refactors for explicit user confirmation before applying (per `/improve-system`'s structural-change gate), then implemented all four once approved.
+
+### Issues / surprises
+- The bug was invisible to `nix build`/`nix flake check` entirely — both passed the whole time the packaged app was broken. Static build success doesn't prove a Nix-wrapped app's runtime env is correct; only inspecting the wrapper and running it does.
+
+### Next session
+- **Priority**: bump the `financeguru` input in the NixOS repo and rebuild natalie-laptop — it cannot launch the app at all until it picks up this fix.
+- Check CI went green on GitHub Actions; build the net-worth trend chart; GUI-eyeball the Charts/Expenses tabs.
+
+**Commits**: `517d45e..839ce63` (2 commits, FinanceGuru) + `470963e` (1 commit, NixOS repo — interview skill gotcha)
+
+---
+
+## Session: 2026-07-04 — devShell Qt Crash Fix + `/improve-system` Maintenance
+
+**Focus**: Fix `python -m financeguru.main` aborting at startup in `nix develop`, then run a full `/improve-system` maintenance sweep.
+
+### What changed (and why)
+- **Fixed the devShell Qt platform plugin crash** (`flake.nix`): `LD_LIBRARY_PATH` now includes `pkgs.libxcb-cursor` (the xcb plugin dlopens `libxcb-cursor.so` at runtime), and `QT_PLUGIN_PATH` is pinned to `pkgs.qt6.qtbase`'s own plugin dir instead of inheriting the KDE Plasma login shell's value, which pointed at a different, ABI-incompatible qtbase build.
+- **`/improve-system` full sweep**: added `Bash(nix develop *)`, `Bash(nix eval *)`, `Bash(nix flake check)`, `mcp__nixos__nix` to `.claude/settings.json`'s allowlist (usage-ranked from recent transcripts); confirmed all 4 project-local skills, all 4 CLAUDE.md standing rules, and no misfiring skills — everything else came back clean.
+
+### Decisions
+- Root-caused with `coredumpctl` + `gdb` rather than guessing — the backtrace (`QApplicationPrivate::init()` → `qFatal`) plus `ldd`/`QT_PLUGIN_PATH` inspection pinned the exact ABI mismatch (system `qtbase-6.11.1` vs. project `qtbase-6.11.0`).
+- Left the remaining `union.general` KDE-theme-plugin and Wayland icon-pixmap console warnings alone — confirmed cosmetic (even `dolphin` hits variants of this) and not a regression from the fix.
+
+### Issues / surprises
+- The Bash tool's own sandbox couldn't reproduce the crash at all (silent abort, no captured output) until run with `dangerouslyDisableSandbox` — the real display/session access mattered for reproducing a GUI startup crash.
+
+### Next session
+- (unrelated to this session) Check CI went green on GitHub Actions; build the net-worth trend chart; bump the `financeguru` input in the NixOS repo.
+
+**Commits**: `2b9efdc..fadd318` (2 commits)
+
+---
+
 ## Session: 2026-07-02 — Net-Worth Snapshots, Auto Backups, Smoke Tests, CI, Overdue Bills (closed 2026-07-03)
 
 **Focus**: "What would you improve?" → all five answers shipped as one scoped effort: snapshot data layer, rotating backups, view smoke tests, flake-check CI, and overdue bills that stop vanishing.

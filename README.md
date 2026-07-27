@@ -4,7 +4,7 @@ A personal finance desktop application for two users (bosko and natty). Tracks r
 
 ## Current Status
 
-Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The Charts tab now includes a **net-worth trend chart** drawn from the daily snapshots the app has been recording since 2026-07-02, rendered gap-honestly (no interpolation across days the app didn't run). The app records that snapshot and takes an automatic rotating backup at every launch, and CI (`nix flake check` via GitHub Actions) runs the package build, the full test suite, and a real launch of the packaged binary on every push. The flake's outputs are generated for both `x86_64-linux` and `aarch64-linux`. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 160-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, offscreen smoke tests of every view, and behavioral tests of the Expenses filters. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
+Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. The Charts tab now includes a **net-worth trend chart** drawn from the daily snapshots the app has been recording since 2026-07-02, rendered gap-honestly (no interpolation across days the app didn't run). The app records that snapshot and takes an automatic rotating backup at every launch. As of 2026-07-26 the app also ships beyond NixOS — a **Flatpak** build and native **Windows/macOS** builds (via PyInstaller) are produced on every push through CI (see Installation below); nothing beyond GitHub's hosted runners has verified the Windows/macOS/Flatpak builds yet, so treat those as CI-verified, not hardware-verified. The flake's outputs are generated for both `x86_64-linux` and `aarch64-linux`. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 163-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, offscreen smoke tests of every view, behavioral tests of the Expenses filters, and OS-path parity for the cross-platform builds. Four audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26) have been completed with all findings addressed.
 
 ## Features
 
@@ -177,6 +177,17 @@ packaging/
 ```
 
 ## Recent Changes
+
+**2026-07-26 — Cross-Platform Packaging: Flatpak + Windows + macOS**
+
+- **Flatpak** — a manifest built on `io.qt.PySide.BaseApp`/`org.kde.Platform`, verified with a real local `flatpak-builder` build → export → bundle → install → launch, plus a CI job that builds and launches it under Xvfb on every push.
+- **Windows and macOS** — a single PyInstaller spec (branched on `sys.platform`) builds and headlessly smoke-launches native packages for both, entirely on GitHub's hosted runners since no Windows/Mac hardware exists locally. See Installation above for the expected SmartScreen/Gatekeeper first-run steps on an unsigned build.
+- **Database location is now OS-appropriate** everywhere, resolved via `platformdirs` (Linux path unchanged, so existing installs aren't affected).
+- Three bugs surfaced only by watching the real CI runs (never reproducible locally): missing `flatpak-builder`/`pytest` installs on the runner, a deprecated Flatpak Action needing a maintained replacement, and a Windows path-resolution test that needed rewriting against the real `LOCALAPPDATA` rather than an env-var override. Suite 160 → 163 tests, all green.
+
+**2026-07-26 — Skill-Library Maintenance (Internal)**
+
+- Internal only, no user-facing changes: added a new `watch-ci` Claude-skill to babysit GitHub Actions runs after a push, and fixed 4 issues (2 real bugs, 2 structural) found by an immediate audit of all 9 project-local skills.
 
 **2026-07-23 — Skill-Library Maintenance (Internal)**
 

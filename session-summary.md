@@ -4,6 +4,55 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-07-26 — watch-ci Skill + Skill-Audit Fixes
+
+**Focus**: User asked to run `/skill-suggestion` and `/skill-upgrade` in sequence, then `/skill-audit` once those landed — three separate skill invocations rather than the bundled `/improve-system`.
+
+### What changed (and why)
+- **New project-local `watch-ci` skill** — `/skill-suggestion` mined prior transcripts (no reusable pattern in this session's own empty starting context, since it ran right after `/clear`) and found the same manual `gh run list` → `gh run watch` → `gh run view --json jobs` → `gh run view --log-failed` sequence hand-typed across three sessions (07-03, 07-16, 07-26), including two standalone `sleep`-to-poll attempts the harness's anti-sleep-polling guard blocked. Built to replace that with one invocation.
+- **`/skill-upgrade` found nothing to add** — the candidate misfires surfaced by a cross-session transcript scan were already covered by `session-closer`'s existing Gotchas (the `rotate-session-summary.sh` path bug, the `project-state.md` overflow guidance, the `secret-scan`-availability check); the rest were one-off shell slips outside any skill's documented scope, not worth retrofitting a gotcha onto an unrelated skill.
+- **`/skill-audit` swept all 9 project-local skills** (including the brand-new `watch-ci`) via 3 parallel sub-agents on disjoint groups, and found 4 real issues, all fixed same-session: `watch-ci`'s run-discovery fallback could silently watch a stale run if GitHub hadn't created the new run yet right after a push (added a ~30s retry loop + a mismatch warning); `secret-scan`'s exclude pathspec was accidentally exempting *all* of `.claude/skills/` from scanning instead of just its own directory (narrowed to match the documented intent); `audit`'s migration checklist duplicated `db-migration`'s whole procedure with nothing forcing them to stay in sync (now cross-references it instead); `audit`'s end-of-report fix-it prompt was free text instead of `AskUserQuestion` (fixed).
+
+### Decisions
+- Respected the user's explicit request for three separate skill invocations rather than substituting `/improve-system`, even though it already chains the same skills — the user asked for the granular version this time.
+- A sub-agent's claim that `codebase-improvement-sweep` references a nonexistent `TaskCreate` tool was checked against the live tool list and found to be a false positive; dropped rather than "fixed," per the audit skill's own rule not to trust an unverified claim.
+- Also saved two memory entries: a new reference memory for the `watch-ci` skill, and an update to the existing "verify real CI, not just local" memory pointing it at the new tool instead of leaving it as an unenforced reminder.
+
+### Issues / surprises
+- None — all four fixes were verified before committing (script `bash -n`, a live clean `secret-scan` run with the corrected exclude path).
+
+### Next session
+- No app-facing next steps from this session — see the cross-platform packaging entry below and `project-state.md`'s Next Steps for what's actually open.
+
+**Commits**: `48be9b4..a6f0b35` (4 commits)
+
+---
+
+## Session: 2026-07-26 — Cross-Platform Packaging (Flatpak + Windows/macOS)
+
+**Focus**: Ship FinanceGuru beyond NixOS — Flatpak first (locally testable), then Windows/macOS via PyInstaller (CI-only, no local hardware for either).
+
+### What changed (and why)
+- **Flatpak packaging** (`packaging/flatpak/`) — manifest on `io.qt.PySide.BaseApp`/`org.kde.Platform`, verified end-to-end locally (`flatpak-builder` build → export → bundle → install → launch) before a CI job was added to build/launch it under Xvfb on every push.
+- **Windows + macOS packaging** (`packaging/pyinstaller/`) — a single `sys.platform`-branched PyInstaller spec, built and smoke-launched entirely on GitHub's hosted runners. `main_window.py`'s icon fallback fixed for a PyInstaller freeze (was assuming the Nix source-tree layout, which resolves to nothing once frozen — now uses `sys._MEIPASS`).
+- **`DB_DIR` now resolves via `platformdirs`** instead of a hardcoded `~/.local/share` path, with a test proving the Linux path stays byte-identical so bosko/natty's existing production databases aren't orphaned.
+- **Three real CI-only bugs, none reproducible locally**, each found only by watching an actual `gh run`: the CI runner never had `flatpak-builder`/`pytest` installed before invoking them; the `flatpak/flatpak-github-actions` action org is deprecated and needs privileged system-level flatpak access a non-root CI user doesn't have (switched to the maintained `flathub-infra` fork, pinned to KDE runtime 6.10); Windows' `platformdirs` resolves the path via the native `SHGetKnownFolderPath` API rather than reading `%LOCALAPPDATA%`, so the env-var-override technique that works on Linux/macOS silently didn't apply — rewritten to assert against the real `LOCALAPPDATA`.
+
+### Decisions
+- Code signing (Windows) and notarization (macOS, $99/yr, no free tier) deliberately out of scope — documented as an expected SmartScreen/Gatekeeper bypass step in the README instead.
+- This incident is the concrete example behind the "verify real CI, not just local" project memory — local reproduction of a build step proved insufficient three separate times in this session alone.
+
+### Issues / surprises
+- All three CI-only bugs above were genuine surprises — each had already been verified thoroughly *locally* before being pushed, and each still failed in the real GitHub Actions environment for reasons no local repro could have caught (missing installs, a deprecated Action, an OS API vs. env-var mismatch).
+
+### Next session
+- Get hands-on verification of the Windows/macOS/Flatpak builds on real hardware, or make a deliberate call to accept CI-only verification long-term.
+- natalie-laptop still needs `nix flake update financeguru` + rebuild to pick up this and everything since 2026-07-07.
+
+**Commits**: `25c9894..fe7d823` (5 commits + merge)
+
+---
+
 ## Session: 2026-07-23 — Two New Skills + Skill-Audit Sweep
 
 **Focus**: User asked for `/skill-suggestion` and `/skill-upgrade` ideas mined from session logs since their last run, then to build and ship the resulting candidates, then to `/skill-audit` the whole project-local skill set.
@@ -77,53 +126,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - Same as this morning's: bump `financeguru` in the NixOS repo and rebuild natalie-laptop (still pending — this session only added a CI guard, didn't ship the fix to the host).
 
 **Commits**: `cec48ba` (1 commit)
-
----
-
-## Session: 2026-07-07 — Packaged-App Qt Fix + `/improve-system` Sweep
-
-**Focus**: Fix the *installed* FinanceGuru package failing to launch on natalie-laptop (`no Qt platform plugin could be initialized`), then run a full `/improve-system` maintenance sweep.
-
-### What changed (and why)
-- **Fixed `packages.${system}.default` in `flake.nix`** — the 2026-07-04 devShell fix never touched the actual packaged app. Root cause: `wrapQtAppsHook`'s automatic wrap pass runs *before* `buildPythonApplication`'s own Python wrap, so the Qt env vars it sets (`QT_PLUGIN_PATH` included) were silently dropped from the final wrapper — `nix build` succeeded with no error while the app was still fundamentally broken. `libxcb-cursor.so` was also still missing from the closure. Fix: `dontWrapQtApps = true` + an explicit `postFixup` re-wrap after the Python wrap, so the Qt args land last.
-- **Verified by inspecting the built wrapper directly** (`strings` on `bin/financeguru` inside `nix develop`) and actually running the binary live on this machine's Wayland session, not just trusting `nix build`'s exit code.
-- **New skill: `qt-nix-wrapper-diagnose`** — captures this diagnostic technique; `wrapQtAppsHook` issues showed up in 11 of ~20 past FinanceGuru sessions per transcript grep, so this is a real recurring pain point, not a one-off.
-- **`/improve-system` full 5-skill sweep**: added a Gotcha to the `interview` skill (NixOS repo) about scaling the ceremony down for well-scoped technical fixes; skill-audit (3 parallel sub-agents) found zero correctness bugs across all 5 project-local skills — `new-feature` now delegates commits to `git-commit`, `db-migration`/`qt-smoke` had duplicated code templates extracted to `assets/`, `audit`'s `## Modes` renamed to `## Arguments`; claude-rules and fewer-permission-prompts both came back clean.
-
-### Decisions
-- Scoped via a deliberately lightweight `/interview` (two `AskUserQuestion` prompts, not the full Project Brief + second-AI-review ceremony) since this was a single, already-diagnosed bug — captured as a Gotcha so future sessions know when this is appropriate.
-- Held all four skill-audit refactors for explicit user confirmation before applying (per `/improve-system`'s structural-change gate), then implemented all four once approved.
-
-### Issues / surprises
-- The bug was invisible to `nix build`/`nix flake check` entirely — both passed the whole time the packaged app was broken. Static build success doesn't prove a Nix-wrapped app's runtime env is correct; only inspecting the wrapper and running it does.
-
-### Next session
-- **Priority**: bump the `financeguru` input in the NixOS repo and rebuild natalie-laptop — it cannot launch the app at all until it picks up this fix.
-- Check CI went green on GitHub Actions; build the net-worth trend chart; GUI-eyeball the Charts/Expenses tabs.
-
-**Commits**: `517d45e..839ce63` (2 commits, FinanceGuru) + `470963e` (1 commit, NixOS repo — interview skill gotcha)
-
----
-
-## Session: 2026-07-04 — devShell Qt Crash Fix + `/improve-system` Maintenance
-
-**Focus**: Fix `python -m financeguru.main` aborting at startup in `nix develop`, then run a full `/improve-system` maintenance sweep.
-
-### What changed (and why)
-- **Fixed the devShell Qt platform plugin crash** (`flake.nix`): `LD_LIBRARY_PATH` now includes `pkgs.libxcb-cursor` (the xcb plugin dlopens `libxcb-cursor.so` at runtime), and `QT_PLUGIN_PATH` is pinned to `pkgs.qt6.qtbase`'s own plugin dir instead of inheriting the KDE Plasma login shell's value, which pointed at a different, ABI-incompatible qtbase build.
-- **`/improve-system` full sweep**: added `Bash(nix develop *)`, `Bash(nix eval *)`, `Bash(nix flake check)`, `mcp__nixos__nix` to `.claude/settings.json`'s allowlist (usage-ranked from recent transcripts); confirmed all 4 project-local skills, all 4 CLAUDE.md standing rules, and no misfiring skills — everything else came back clean.
-
-### Decisions
-- Root-caused with `coredumpctl` + `gdb` rather than guessing — the backtrace (`QApplicationPrivate::init()` → `qFatal`) plus `ldd`/`QT_PLUGIN_PATH` inspection pinned the exact ABI mismatch (system `qtbase-6.11.1` vs. project `qtbase-6.11.0`).
-- Left the remaining `union.general` KDE-theme-plugin and Wayland icon-pixmap console warnings alone — confirmed cosmetic (even `dolphin` hits variants of this) and not a regression from the fix.
-
-### Issues / surprises
-- The Bash tool's own sandbox couldn't reproduce the crash at all (silent abort, no captured output) until run with `dangerouslyDisableSandbox` — the real display/session access mattered for reproducing a GUI startup crash.
-
-### Next session
-- (unrelated to this session) Check CI went green on GitHub Actions; build the net-worth trend chart; bump the `financeguru` input in the NixOS repo.
-
-**Commits**: `2b9efdc..fadd318` (2 commits)
 
 ---
 
