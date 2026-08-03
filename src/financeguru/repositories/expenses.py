@@ -25,6 +25,13 @@ def total_for_month(year: int, month: int) -> Decimal:
     return to_decimal(row["total"])
 
 
+def total_all() -> Decimal:
+    """Sum of every logged expense, regardless of date (0 if none)."""
+    with get_connection() as conn:
+        row = conn.execute("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses").fetchone()
+    return to_decimal(row["total"])
+
+
 def add(expense: Expense) -> int | None:
     with get_connection() as conn:
         cur = conn.execute(

@@ -1,10 +1,9 @@
-from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
+    QComboBox, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
     QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
@@ -14,29 +13,22 @@ from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import incomes as income_repo
+from financeguru.views._month_filter import month_entries, month_prefix
 from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
 
-_COLS = ["Source", "Amount", "Pay Day", "Notes"]
+_COLS = ["Source", "Amount", "Date", "Notes"]
 _GREEN = "#2d9e2d"
 _RED = "#c0392b"
 _BLUE = "#2980b9"
-
-
-def _ordinal(day: int) -> str:
-    """Day of month as an ordinal, e.g. 1 -> '1st', 15 -> '15th'."""
-    if 10 <= day % 100 <= 20:
-        suffix = "th"
-    else:
-        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-    return f"{day}{suffix}"
 
 
 class SalaryView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._incomes: list[Income] = []
+        self._rows: list[Income] = []
 
         # ── Income controls + table ───────────────────────────────────────
         btn_bar = QHBoxLayout()
@@ -45,9 +37,11 @@ class SalaryView(QWidget):
         self._btn_delete = QPushButton("Delete")
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
+        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
+        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
 
         self._table = QTableWidget(0, len(_COLS))
@@ -60,8 +54,8 @@ class SalaryView(QWidget):
         self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         self._table.setSortingEnabled(True)
 
-        # ── Monthly budget summary ────────────────────────────────────────
-        budget_box = QGroupBox("Monthly Budget")
+        # ── Budget summary ───────────────────────────────────────────────
+        budget_box = QGroupBox("Budget")
         budget_layout = QHBoxLayout(budget_box)
         self._lbl_income = QLabel()
         self._lbl_bills = QLabel()
@@ -125,6 +119,7 @@ class SalaryView(QWidget):
         self._btn_add.clicked.connect(self._on_add)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
+        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
         attach_row_menu(self._table, [
@@ -136,47 +131,85 @@ class SalaryView(QWidget):
         self._slider.valueChanged.connect(self._on_rate_changed)
         self._pct.valueChanged.connect(self._on_rate_changed)
 
-        self.refresh()
+        self._refresh()
 
     # ── Data ────────────────────────────────────────────────────────────────
 
     def refresh(self) -> None:
-        self._incomes = income_repo.get_all()
+        # Public hook MainWindow calls after a DB restore / on tab switch.
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self._incomes = income_repo.get_all()  # sorted DESC, so the last row is earliest
+        earliest = self._incomes[-1].pay_date if self._incomes else None
+        self._populate_month_picker(earliest)
+        key = self._month_picker.currentData()
+        if key is not None:
+            prefix = month_prefix(key)
+            self._rows = [i for i in self._incomes if i.pay_date.startswith(prefix)]
+        else:
+            self._rows = self._incomes
         self._render_table()
-        self._recompute()
+        self._recompute(key)
+
+    def _populate_month_picker(self, earliest_date: str | None) -> None:
+        """Rebuild the month dropdown, preserving the selection by label if possible.
+
+        Called from `_refresh` (which already has the freshest data on hand for
+        `earliest_date`), so the list grows as new history is added instead of
+        needing a separate refresh path.
+        """
+        previous = self._month_picker.currentText()
+        entries = month_entries(earliest_date)
+        labels = [label for label, _ in entries]
+
+        self._month_picker.blockSignals(True)
+        self._month_picker.clear()
+        for label, key in entries:
+            self._month_picker.addItem(label, key)
+        if previous in labels:
+            self._month_picker.setCurrentIndex(labels.index(previous))
+        else:
+            # First population, or the prior selection vanished — default to
+            # the current month, which is always index 1 (index 0 is "All").
+            self._month_picker.setCurrentIndex(1 if len(labels) > 1 else 0)
+        self._month_picker.blockSignals(False)
 
     def _render_table(self) -> None:
         self._table.setSortingEnabled(False)
-        self._table.setRowCount(len(self._incomes))
-        for row, inc in enumerate(self._incomes):
+        self._table.setRowCount(len(self._rows))
+        for row, inc in enumerate(self._rows):
             name_item = QTableWidgetItem(inc.name)
             name_item.setData(Qt.ItemDataRole.UserRole, inc)
             self._table.setItem(row, 0, name_item)
             self._table.setItem(row, 1, right(money(inc.amount), float(inc.amount)))
-            self._table.setItem(row, 2, center(_ordinal(inc.pay_day), inc.pay_day))
+            self._table.setItem(row, 2, center(inc.pay_date))
             self._table.setItem(row, 3, QTableWidgetItem(inc.notes or ""))
         self._table.setSortingEnabled(True)
 
-    def _recompute(self) -> None:
-        total_income = sum(i.amount for i in self._incomes)
+    def _recompute(self, key: tuple[int, int] | None) -> None:
+        total_income = sum(i.amount for i in self._rows)
         total_bills = sum(monthly_bill(b) for b in bill_repo.get_all())
-        # This month's logged one-off spending (Expenses tab), on top of the
-        # recurring bill obligations, so "extra" is what's actually left to save.
-        today = date.today()
-        total_expenses = expense_repo.total_for_month(today.year, today.month)
+        is_all = key is None
+        if is_all:
+            scope = "All-Time"
+            total_expenses = expense_repo.total_all()
+        else:
+            scope = self._month_picker.currentText()
+            total_expenses = expense_repo.total_for_month(*key)
         extra = total_income - total_bills - total_expenses
 
-        self._lbl_income.setText(f"Monthly Income\n{money(total_income)}")
+        self._lbl_income.setText(f"{scope} Income\n{money(total_income)}")
         self._lbl_bills.setText(f"Monthly Bills\n−{money(total_bills)}")
-        self._lbl_expenses.setText(f"This Month's Expenses\n−{money(total_expenses)}")
+        self._lbl_expenses.setText(f"{scope} Expenses\n−{money(total_expenses)}")
         extra_color = _GREEN if extra >= 0 else _RED
         label = "Extra Spending Money" if extra >= 0 else "Over Budget"
         self._lbl_extra.setText(f"{label}\n{money(extra)}")
         self._lbl_extra.setStyleSheet(f"color: {extra_color};")
 
-        self._update_savings(extra)
+        self._update_savings(extra, is_all)
 
-    def _update_savings(self, extra: Decimal) -> None:
+    def _update_savings(self, extra: Decimal, is_all: bool) -> None:
         pct = self._slider.value()
 
         if extra <= 0:
@@ -186,7 +219,7 @@ class SalaryView(QWidget):
             self._bar.setStretch(0, 1)
             self._bar.setStretch(1, 0)
             self._savings_detail.setText(
-                "Your bills meet or exceed your income — no spare money to save this month."
+                "Your bills meet or exceed your income — no spare money to save."
             )
             return
 
@@ -201,10 +234,15 @@ class SalaryView(QWidget):
         self._bar.setStretch(0, max(0, round(save)))
         self._bar.setStretch(1, max(0, round(spend)))
 
-        self._savings_detail.setText(
-            f"Set aside {money(save)}/mo  ({money(save * 12)}/yr)"
-            f"   ·   Free to spend {money(spend)}/mo"
-        )
+        if is_all:
+            self._savings_detail.setText(
+                f"Set aside {money(save)}   ·   Free to spend {money(spend)}"
+            )
+        else:
+            self._savings_detail.setText(
+                f"Set aside {money(save)}/mo  ({money(save * 12)}/yr)"
+                f"   ·   Free to spend {money(spend)}/mo"
+            )
 
     # ── Slots ─────────────────────────────────────────────────────────────
 
@@ -226,13 +264,13 @@ class SalaryView(QWidget):
                 widget.blockSignals(True)
                 widget.setValue(value)
                 widget.blockSignals(False)
-        self._recompute()
+        self._recompute(self._month_picker.currentData())
 
     def _on_add(self) -> None:
         dialog = IncomeDialog(self)
         if dialog.exec():
             income_repo.add(dialog.income())
-            self.refresh()
+            self._refresh()
 
     def _on_edit(self) -> None:
         income = self._selected()
@@ -241,7 +279,7 @@ class SalaryView(QWidget):
         dialog = IncomeDialog(self, income)
         if dialog.exec():
             income_repo.update(dialog.income())
-            self.refresh()
+            self._refresh()
 
     def _on_delete(self) -> None:
         income = self._selected()
@@ -254,4 +292,4 @@ class SalaryView(QWidget):
         )
         if answer == QMessageBox.StandardButton.Yes:
             income_repo.delete(income.id)
-            self.refresh()
+            self._refresh()

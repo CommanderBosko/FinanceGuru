@@ -122,30 +122,22 @@ def _drop_column(conn, table: str, column: str) -> None:
         conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
 
 
-def _migrate_income_pay_day(conn) -> None:
-    """One-time backfill of `pay_day` from the old frequency/pay_days columns.
+def _migrate_income_to_pay_date(conn) -> None:
+    """Wipe income rows that predate the switch to a per-paycheck `pay_date`.
 
-    Income dropped its "frequency" concept in favor of a single pay day per
-    month. Only the legacy 'specific days' rows carried a real day-of-month
-    (possibly several, comma-separated); since an income now has exactly one
-    pay day, the first day listed is kept and the rest are dropped. Every
-    other frequency had no day-of-month data at all, so it keeps the column's
-    DEFAULT of 1. Guarded on the old columns still existing, so this is a
-    no-op after the first run (once frequency/pay_days are dropped below) or
-    on a fresh database that never had them.
+    Income moved from "one recurring definition per source" (a bare
+    day-of-month, itself previously backfilled from an even older
+    frequency/pay_days scheme) to "one dated record per paycheck received".
+    None of the old shapes carry a real calendar date, so there's nothing
+    sensible to migrate forward — existing rows are cleared per explicit
+    product decision, and paychecks are re-logged going forward. Guarded on
+    `pay_date` already existing, so this is a no-op after the first run or on
+    a fresh database that never had the old shape.
     """
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(incomes)")}
-    if "frequency" not in existing or "pay_days" not in existing:
+    if "pay_date" in existing:
         return
-    rows = conn.execute(
-        "SELECT id, pay_days FROM incomes WHERE frequency = 'specific days' AND pay_days IS NOT NULL"
-    ).fetchall()
-    for row in rows:
-        for part in row["pay_days"].split(","):
-            part = part.strip()
-            if part.isdigit() and 1 <= int(part) <= 31:
-                conn.execute("UPDATE incomes SET pay_day=? WHERE id=?", (int(part), row["id"]))
-                break
+    conn.execute("DELETE FROM incomes")
 
 
 def init_db() -> None:
@@ -192,7 +184,7 @@ def init_db() -> None:
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 name        TEXT    NOT NULL,
                 amount      REAL    NOT NULL,
-                pay_day     INTEGER NOT NULL DEFAULT 1,
+                pay_date    TEXT    NOT NULL,
                 notes       TEXT
             );
 
@@ -265,16 +257,17 @@ def init_db() -> None:
         """)
 
         # Migrations for databases created before a column existed.
-        _ensure_column(conn, "incomes", "pay_day", "pay_day INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
         _ensure_column(conn, "bills", "due_month", "due_month INTEGER")
         _ensure_column(conn, "bills", "due_year", "due_year INTEGER")
         _ensure_column(conn, "stocks", "last_price", "last_price REAL")
         _ensure_column(conn, "stocks", "last_price_date", "last_price_date TEXT")
 
-        # Backfill pay_day from the old frequency/pay_days columns, then drop
-        # them — must run after pay_day exists (just above) and before the drop.
-        _migrate_income_pay_day(conn)
+        # Wipe pre-pay_date income rows (see _migrate_income_to_pay_date), then
+        # add the column and drop whatever legacy shape the table was in.
+        _migrate_income_to_pay_date(conn)
+        _ensure_column(conn, "incomes", "pay_date", "pay_date TEXT NOT NULL DEFAULT ''")
+        _drop_column(conn, "incomes", "pay_day")
         _drop_column(conn, "incomes", "frequency")
         _drop_column(conn, "incomes", "pay_days")
 

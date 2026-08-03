@@ -129,7 +129,7 @@ def seeded_db(temp_db):
     expense_repo.add(
         Expense(amount=Decimal("42.75"), spent_date=today.isoformat(), notes="groceries")
     )
-    income_repo.add(Income(name="Bosko — Main Job", amount=Decimal("2400.00"), pay_day=15))
+    income_repo.add(Income(name="Bosko — Main Job", amount=Decimal("2400.00"), pay_date=today.isoformat()))
     stock_repo.add(
         Stock(
             ticker="VOO",

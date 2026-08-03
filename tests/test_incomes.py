@@ -6,7 +6,7 @@ from financeguru.repositories import incomes
 
 def test_add_and_round_trip():
     new_id = incomes.add(Income(name="Bosko — Main Job", amount=Decimal("2500.00"),
-                                pay_day=15, notes="net pay"))
+                                pay_date="2026-07-15", notes="net pay"))
     assert new_id
 
     rows = incomes.get_all()
@@ -14,23 +14,23 @@ def test_add_and_round_trip():
     inc = rows[0]
     assert inc.name == "Bosko — Main Job"
     assert inc.amount == Decimal("2500.00")
-    assert inc.pay_day == 15
+    assert inc.pay_date == "2026-07-15"
     assert isinstance(inc.amount, Decimal)
 
 
-def test_get_all_orders_by_name():
-    incomes.add(Income(name="Zeta", amount=Decimal("1"), pay_day=1))
-    incomes.add(Income(name="Alpha", amount=Decimal("1"), pay_day=1))
+def test_get_all_orders_by_pay_date_desc():
+    incomes.add(Income(name="Zeta", amount=Decimal("1"), pay_date="2026-01-01"))
+    incomes.add(Income(name="Alpha", amount=Decimal("1"), pay_date="2026-06-01"))
     assert [i.name for i in incomes.get_all()] == ["Alpha", "Zeta"]
 
 
 def test_update_and_delete():
-    iid = incomes.add(Income(name="Side gig", amount=Decimal("300"), pay_day=1))
+    iid = incomes.add(Income(name="Side gig", amount=Decimal("300"), pay_date="2026-07-01"))
     incomes.update(Income(id=iid, name="Side gig", amount=Decimal("400"),
-                          pay_day=5, notes="raise"))
+                          pay_date="2026-07-05", notes="raise"))
     inc = incomes.get_all()[0]
     assert inc.amount == Decimal("400")
-    assert inc.pay_day == 5
+    assert inc.pay_date == "2026-07-05"
     assert inc.notes == "raise"
 
     incomes.delete(iid)

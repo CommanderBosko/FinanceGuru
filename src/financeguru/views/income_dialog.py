@@ -1,6 +1,7 @@
+from PySide6.QtCore import QDate
 from PySide6.QtWidgets import (
-    QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QFormLayout, QLineEdit, QSpinBox, QTextEdit, QVBoxLayout,
+    QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QFormLayout, QLineEdit, QTextEdit, QVBoxLayout,
 )
 
 from financeguru.models.income import Income
@@ -25,12 +26,14 @@ class IncomeDialog(QDialog):
         self._amount.setRange(0.0, 9_999_999.99)
         self._amount.setDecimals(2)
         self._amount.setValue(float(income.amount) if income else 0.0)
-        form.addRow("Amount per Month", self._amount)
+        form.addRow("Amount", self._amount)
 
-        self._pay_day = QSpinBox()
-        self._pay_day.setRange(1, 31)
-        self._pay_day.setValue(income.pay_day if income else 1)
-        form.addRow("Pay Day of Month", self._pay_day)
+        self._pay_date = QDateEdit(
+            QDate.fromString(income.pay_date, "yyyy-MM-dd") if income else QDate.currentDate()
+        )
+        self._pay_date.setCalendarPopup(True)
+        self._pay_date.setDisplayFormat("yyyy-MM-dd")
+        form.addRow("Date", self._pay_date)
 
         self._notes = QTextEdit(income.notes or "" if income else "")
         self._notes.setFixedHeight(64)
@@ -51,6 +54,6 @@ class IncomeDialog(QDialog):
             id=self._income_id,
             name=self._name.text().strip(),
             amount=cents(self._amount.value()),
-            pay_day=self._pay_day.value(),
+            pay_date=self._pay_date.date().toString("yyyy-MM-dd"),
             notes=self._notes.toPlainText().strip() or None,
         )

@@ -137,8 +137,9 @@ def test_expenses_amount_sorts_numerically_and_edit_targets_correct_row(qapp, te
 # ── Income (Salary tab) ────────────────────────────────────────────────────
 
 def test_income_amount_sorts_numerically_and_edit_targets_correct_row(qapp, temp_db):
-    income_repo.add(Income(name="Big Job", amount=Decimal("5000.00"), pay_day=1))
-    income_repo.add(Income(name="Side Gig", amount=Decimal("300.00"), pay_day=1))
+    today = date.today().isoformat()
+    income_repo.add(Income(name="Big Job", amount=Decimal("5000.00"), pay_date=today))
+    income_repo.add(Income(name="Side Gig", amount=Decimal("300.00"), pay_date=today))
     view = SalaryView()
     _sort(view._table, 1)  # Amount
     assert _col_texts(view._table, 0) == ["Side Gig", "Big Job"]

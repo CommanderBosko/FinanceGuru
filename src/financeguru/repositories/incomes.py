@@ -8,22 +8,22 @@ def _row_to_income(row) -> Income:
         id=row["id"],
         name=row["name"],
         amount=to_decimal(row["amount"]),
-        pay_day=row["pay_day"],
+        pay_date=row["pay_date"],
         notes=row["notes"],
     )
 
 
 def get_all() -> list[Income]:
     with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM incomes ORDER BY name").fetchall()
+        rows = conn.execute("SELECT * FROM incomes ORDER BY pay_date DESC").fetchall()
     return [_row_to_income(r) for r in rows]
 
 
 def add(income: Income) -> int:
     with get_connection() as conn:
         cur = conn.execute(
-            "INSERT INTO incomes (name, amount, pay_day, notes) VALUES (?, ?, ?, ?)",
-            (income.name, income.amount, income.pay_day, income.notes),
+            "INSERT INTO incomes (name, amount, pay_date, notes) VALUES (?, ?, ?, ?)",
+            (income.name, income.amount, income.pay_date, income.notes),
         )
         return cur.lastrowid or 0
 
@@ -31,8 +31,8 @@ def add(income: Income) -> int:
 def update(income: Income) -> None:
     with get_connection() as conn:
         conn.execute(
-            "UPDATE incomes SET name=?, amount=?, pay_day=?, notes=? WHERE id=?",
-            (income.name, income.amount, income.pay_day, income.notes, income.id),
+            "UPDATE incomes SET name=?, amount=?, pay_date=?, notes=? WHERE id=?",
+            (income.name, income.amount, income.pay_date, income.notes, income.id),
         )
 
 
