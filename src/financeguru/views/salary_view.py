@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from financeguru.budget import SPECIFIC_DAYS, format_pay_days, monthly_bill, monthly_income
+from financeguru.budget import monthly_bill
 from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import expenses as expense_repo
@@ -18,10 +18,19 @@ from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
 
-_COLS = ["Source", "Amount", "Frequency", "Monthly", "Notes"]
+_COLS = ["Source", "Amount", "Pay Day", "Notes"]
 _GREEN = "#2d9e2d"
 _RED = "#c0392b"
 _BLUE = "#2980b9"
+
+
+def _ordinal(day: int) -> str:
+    """Day of month as an ordinal, e.g. 1 -> '1st', 15 -> '15th'."""
+    if 10 <= day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    return f"{day}{suffix}"
 
 
 class SalaryView(QWidget):
@@ -43,7 +52,7 @@ class SalaryView(QWidget):
 
         self._table = QTableWidget(0, len(_COLS))
         self._table.setHorizontalHeaderLabels(_COLS)
-        self._table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
@@ -140,23 +149,16 @@ class SalaryView(QWidget):
         self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._incomes))
         for row, inc in enumerate(self._incomes):
-            monthly = monthly_income(inc)
             name_item = QTableWidgetItem(inc.name)
             name_item.setData(Qt.ItemDataRole.UserRole, inc)
             self._table.setItem(row, 0, name_item)
             self._table.setItem(row, 1, right(money(inc.amount), float(inc.amount)))
-            if inc.frequency == SPECIFIC_DAYS:
-                days = format_pay_days(inc.pay_days)
-                freq_text = f"days {days}" if days else SPECIFIC_DAYS
-            else:
-                freq_text = inc.frequency
-            self._table.setItem(row, 2, center(freq_text))
-            self._table.setItem(row, 3, right(money(monthly), float(monthly)))
-            self._table.setItem(row, 4, QTableWidgetItem(inc.notes or ""))
+            self._table.setItem(row, 2, center(_ordinal(inc.pay_day), inc.pay_day))
+            self._table.setItem(row, 3, QTableWidgetItem(inc.notes or ""))
         self._table.setSortingEnabled(True)
 
     def _recompute(self) -> None:
-        total_income = sum(monthly_income(i) for i in self._incomes)
+        total_income = sum(i.amount for i in self._incomes)
         total_bills = sum(monthly_bill(b) for b in bill_repo.get_all())
         # This month's logged one-off spending (Expenses tab), on top of the
         # recurring bill obligations, so "extra" is what's actually left to save.

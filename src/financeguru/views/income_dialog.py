@@ -1,10 +1,8 @@
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QFormLayout, QGridLayout, QGroupBox, QLineEdit, QMessageBox,
-    QPushButton, QTextEdit, QVBoxLayout,
+    QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QFormLayout, QLineEdit, QSpinBox, QTextEdit, QVBoxLayout,
 )
 
-from financeguru.budget import INCOME_FREQUENCIES, SPECIFIC_DAYS, parse_pay_days
 from financeguru.models.income import Income
 from financeguru.money import cents
 
@@ -27,27 +25,12 @@ class IncomeDialog(QDialog):
         self._amount.setRange(0.0, 9_999_999.99)
         self._amount.setDecimals(2)
         self._amount.setValue(float(income.amount) if income else 0.0)
-        form.addRow("Amount per Paycheck", self._amount)
+        form.addRow("Amount per Month", self._amount)
 
-        self._frequency = QComboBox()
-        self._frequency.addItems(INCOME_FREQUENCIES)
-        self._frequency.setCurrentText(income.frequency if income else "biweekly")
-        form.addRow("Frequency", self._frequency)
-
-        # ── Pay-days picker (only for "specific days") ────────────────────
-        self._days_box = QGroupBox("Pay Days  (day of month)")
-        grid = QGridLayout(self._days_box)
-        grid.setSpacing(3)
-        self._day_buttons: list[QPushButton] = []
-        selected = set(parse_pay_days(income.pay_days)) if income else set()
-        for day in range(1, 32):
-            btn = QPushButton(str(day))
-            btn.setCheckable(True)
-            btn.setFixedWidth(38)
-            btn.setChecked(day in selected)
-            self._day_buttons.append(btn)
-            grid.addWidget(btn, (day - 1) // 7, (day - 1) % 7)
-        form.addRow(self._days_box)
+        self._pay_day = QSpinBox()
+        self._pay_day.setRange(1, 31)
+        self._pay_day.setValue(income.pay_day if income else 1)
+        form.addRow("Pay Day of Month", self._pay_day)
 
         self._notes = QTextEdit(income.notes or "" if income else "")
         self._notes.setFixedHeight(64)
@@ -63,35 +46,11 @@ class IncomeDialog(QDialog):
         layout.addLayout(form)
         layout.addWidget(buttons)
 
-        self._frequency.currentTextChanged.connect(self._on_freq_changed)
-        self._on_freq_changed(self._frequency.currentText())
-
-    def _on_freq_changed(self, freq: str) -> None:
-        self._days_box.setVisible(freq == SPECIFIC_DAYS)
-        self.adjustSize()
-
-    def _selected_days(self) -> list[int]:
-        return [i for i, btn in enumerate(self._day_buttons, start=1) if btn.isChecked()]
-
-    def accept(self) -> None:
-        if self._frequency.currentText() == SPECIFIC_DAYS and not self._selected_days():
-            QMessageBox.information(
-                self, "Select Pay Days",
-                "Pick at least one day of the month, or choose a different frequency.",
-            )
-            return
-        super().accept()
-
     def income(self) -> Income:
-        freq = self._frequency.currentText()
-        pay_days = None
-        if freq == SPECIFIC_DAYS:
-            pay_days = ",".join(str(d) for d in self._selected_days()) or None
         return Income(
             id=self._income_id,
             name=self._name.text().strip(),
             amount=cents(self._amount.value()),
-            frequency=freq,
-            pay_days=pay_days,
+            pay_day=self._pay_day.value(),
             notes=self._notes.toPlainText().strip() or None,
         )

@@ -109,6 +109,45 @@ def _rename_category(conn, old: str, new: str) -> None:
     conn.execute("UPDATE expenses SET category=? WHERE category=?", (new, old))
 
 
+def _drop_column(conn, table: str, column: str) -> None:
+    """Drop a column from an existing table if present (idempotent).
+
+    Mirrors `_ensure_column`'s identifier validation — table/column names are
+    interpolated directly since SQLite can't bind identifiers with `?`.
+    """
+    if not _IDENT_RE.fullmatch(table) or not _IDENT_RE.fullmatch(column):
+        raise ValueError(f"unsafe identifier: {table!r}.{column!r}")
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column in existing:
+        conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+
+
+def _migrate_income_pay_day(conn) -> None:
+    """One-time backfill of `pay_day` from the old frequency/pay_days columns.
+
+    Income dropped its "frequency" concept in favor of a single pay day per
+    month. Only the legacy 'specific days' rows carried a real day-of-month
+    (possibly several, comma-separated); since an income now has exactly one
+    pay day, the first day listed is kept and the rest are dropped. Every
+    other frequency had no day-of-month data at all, so it keeps the column's
+    DEFAULT of 1. Guarded on the old columns still existing, so this is a
+    no-op after the first run (once frequency/pay_days are dropped below) or
+    on a fresh database that never had them.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(incomes)")}
+    if "frequency" not in existing or "pay_days" not in existing:
+        return
+    rows = conn.execute(
+        "SELECT id, pay_days FROM incomes WHERE frequency = 'specific days' AND pay_days IS NOT NULL"
+    ).fetchall()
+    for row in rows:
+        for part in row["pay_days"].split(","):
+            part = part.strip()
+            if part.isdigit() and 1 <= int(part) <= 31:
+                conn.execute("UPDATE incomes SET pay_day=? WHERE id=?", (int(part), row["id"]))
+                break
+
+
 def init_db() -> None:
     DB_DIR.mkdir(parents=True, exist_ok=True)
     # Restrict the data directory to the owner; this also covers the -wal/-journal
@@ -153,8 +192,7 @@ def init_db() -> None:
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 name        TEXT    NOT NULL,
                 amount      REAL    NOT NULL,
-                frequency   TEXT    NOT NULL DEFAULT 'monthly',
-                pay_days    TEXT,
+                pay_day     INTEGER NOT NULL DEFAULT 1,
                 notes       TEXT
             );
 
@@ -227,12 +265,18 @@ def init_db() -> None:
         """)
 
         # Migrations for databases created before a column existed.
-        _ensure_column(conn, "incomes", "pay_days", "pay_days TEXT")
+        _ensure_column(conn, "incomes", "pay_day", "pay_day INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "bills", "category", "category TEXT NOT NULL DEFAULT 'Other'")
         _ensure_column(conn, "bills", "due_month", "due_month INTEGER")
         _ensure_column(conn, "bills", "due_year", "due_year INTEGER")
         _ensure_column(conn, "stocks", "last_price", "last_price REAL")
         _ensure_column(conn, "stocks", "last_price_date", "last_price_date TEXT")
+
+        # Backfill pay_day from the old frequency/pay_days columns, then drop
+        # them — must run after pay_day exists (just above) and before the drop.
+        _migrate_income_pay_day(conn)
+        _drop_column(conn, "incomes", "frequency")
+        _drop_column(conn, "incomes", "pay_days")
 
         # Apply category renames before seeding so the new name is already
         # present and the INSERT OR IGNORE below doesn't re-add the old one.

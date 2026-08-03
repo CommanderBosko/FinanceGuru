@@ -236,12 +236,59 @@ def test_export_neutralizes_formula_injection(tmp_path):
 def test_ensure_column_is_idempotent_and_validates_identifiers():
     with db.get_connection() as conn:
         # Adding an existing column is a no-op (does not raise).
-        db._ensure_column(conn, "incomes", "pay_days", "pay_days TEXT")
+        db._ensure_column(conn, "incomes", "pay_day", "pay_day INTEGER NOT NULL DEFAULT 1")
         # Unsafe identifiers are rejected before reaching SQL.
         with pytest.raises(ValueError):
             db._ensure_column(conn, "incomes; DROP TABLE bills", "x", "x TEXT")
         with pytest.raises(ValueError):
-            db._ensure_column(conn, "incomes", "pay_days", "DROP TABLE bills")
+            db._ensure_column(conn, "incomes", "pay_day", "DROP TABLE bills")
+
+
+# --- incomes frequency -> pay_day migration ---------------------------------
+
+def test_income_pay_day_migration_backfills_and_drops_old_columns():
+    with db.get_connection() as conn:
+        # Roll back to the pre-migration shape: recreate `incomes` with the old
+        # frequency/pay_days columns (pay_day doesn't exist yet), then insert
+        # rows the way the old app would have.
+        conn.execute("DROP TABLE incomes")
+        conn.execute("""
+            CREATE TABLE incomes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL,
+                amount      REAL    NOT NULL,
+                frequency   TEXT    NOT NULL DEFAULT 'monthly',
+                pay_days    TEXT,
+                notes       TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO incomes (name, amount, frequency, pay_days) VALUES (?, ?, ?, ?)",
+            ("Natty — Salary", 1500.0, "specific days", "15,1"),
+        )
+        conn.execute(
+            "INSERT INTO incomes (name, amount, frequency) VALUES (?, ?, ?)",
+            ("Bosko — Main Job", 2400.0, "biweekly"),
+        )
+
+    db.init_db()  # upgrade
+
+    with db.get_connection() as conn:
+        columns = _column_names(conn, "incomes")
+        assert "frequency" not in columns and "pay_days" not in columns
+        assert "pay_day" in columns
+        pay_days = {
+            r["name"]: r["pay_day"] for r in conn.execute("SELECT name, pay_day FROM incomes")
+        }
+    # "specific days" backfills from the first listed day; every other
+    # frequency had no day-of-month data and keeps the column's default of 1.
+    assert pay_days["Natty — Salary"] == 15
+    assert pay_days["Bosko — Main Job"] == 1
+
+    # A second run is a no-op (idempotent) rather than erroring or re-adding data.
+    db.init_db()
+    with db.get_connection() as conn:
+        assert "frequency" not in _column_names(conn, "incomes")
 
 
 # --- bills.category schema + migration -------------------------------------
