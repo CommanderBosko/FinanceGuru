@@ -1,14 +1,13 @@
-from datetime import date
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox, QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton,
+    QComboBox, QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.payment_dialog import PaymentDialog
+from financeguru.views._month_filter import month_entries, month_prefix
 from financeguru.views._table import money
 
 
@@ -25,12 +24,11 @@ class PaymentsView(QWidget):
         self._btn_delete = QPushButton("Delete")
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
-        self._chk_current_only = QCheckBox("This month only")
-        self._chk_current_only.setChecked(True)
+        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
-        btn_bar.addWidget(self._chk_current_only)
+        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search bills, amounts, dates, notes…")
@@ -50,7 +48,7 @@ class PaymentsView(QWidget):
         self._btn_add.clicked.connect(self._on_add)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
-        self._chk_current_only.toggled.connect(self._refresh)
+        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._search.textChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
@@ -70,9 +68,12 @@ class PaymentsView(QWidget):
         self._refresh()
 
     def _refresh(self) -> None:
-        rows = payment_repo.get_all()
-        if self._chk_current_only.isChecked():
-            prefix = date.today().strftime("%Y-%m-")
+        rows = payment_repo.get_all()  # sorted DESC, so the last row is earliest
+        earliest = rows[-1]["paid_date"] if rows else None
+        self._populate_month_picker(earliest)
+        key = self._month_picker.currentData()
+        if key is not None:
+            prefix = month_prefix(key)
             rows = [r for r in rows if (r["paid_date"] or "").startswith(prefix)]
         query = self._search.text().strip().lower()
         if query:
@@ -88,6 +89,29 @@ class PaymentsView(QWidget):
             self._table.setItem(row, 1, amount_item)
             self._table.setItem(row, 2, date_item)
             self._table.setItem(row, 3, QTableWidgetItem(rec["notes"] or ""))
+
+    def _populate_month_picker(self, earliest_date: str | None) -> None:
+        """Rebuild the month dropdown, preserving the selection by label if possible.
+
+        Called from `_refresh` (which already has the freshest data on hand for
+        `earliest_date`), so the list grows as new history is added instead of
+        needing a separate refresh path.
+        """
+        previous = self._month_picker.currentText()
+        entries = month_entries(earliest_date)
+        labels = [label for label, _ in entries]
+
+        self._month_picker.blockSignals(True)
+        self._month_picker.clear()
+        for label, key in entries:
+            self._month_picker.addItem(label, key)
+        if previous in labels:
+            self._month_picker.setCurrentIndex(labels.index(previous))
+        else:
+            # First population, or the prior selection vanished — default to
+            # the current month, which is always index 1 (index 0 is "All").
+            self._month_picker.setCurrentIndex(1 if len(labels) > 1 else 0)
+        self._month_picker.blockSignals(False)
 
     @staticmethod
     def _haystack(rec: dict) -> str:
