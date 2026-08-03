@@ -449,9 +449,11 @@ def export_all_csv(dest_dir: Path) -> list[Path]:
             # on these multi-user machines (open(path,"w") would use the umask).
             # O_NOFOLLOW refuses to write through a pre-existing symlink, which
             # another local user could plant at a predictable export filename.
+            # It's POSIX-only — Windows has no equivalent flag, so fall back to
+            # a no-op there rather than crash with AttributeError.
             fd = os.open(
                 path,
-                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
                 0o600,
             )
             with open(fd, "w", newline="", encoding="utf-8") as f:
