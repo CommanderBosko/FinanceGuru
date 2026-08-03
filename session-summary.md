@@ -23,7 +23,7 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ### Issues / surprises
 - This session-closer run was itself interrupted once mid-close: the first pass only skimmed the tail of a 13-transcript scan and mistook an old (2026-07-16) close narrative for current context. The transcript-cutoff helper (`find-last-skill-invocation.sh`) had also picked a stale marker (2026-07-16) instead of the real last close (2026-07-26, confirmed via the `chore(session)` commit `f7f0549` and the existing session-summary entries below) — worth a `skill-upgrade` look at why the detector drifted.
-- All 6 feature/fix commits were made locally throughout the day with pushing deliberately deferred until this close-out.
+- 5 of the 6 commits were pushed mid-session (once asked for, after the Goals start-date commit); the final audit-fix commit was left local and is pushed by this close-out.
 
 ### Next session
 - No app-facing next steps opened this session — see `project-state.md`'s Next Steps (natalie-laptop rebuild, Charts GUI eyeball, hardware verification of non-Linux builds, multi-user partitioning) for what's actually open.
