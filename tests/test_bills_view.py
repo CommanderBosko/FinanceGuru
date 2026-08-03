@@ -146,3 +146,20 @@ def test_month_entries_include_goal_and_one_time_months(view):
     assert "March 2027" in labels      # one-time bill's due month
     assert "August 2026" in labels     # goal start_date
     assert "December 2026" in labels   # goal target_date
+
+
+def test_falls_back_to_current_month_when_selection_vanishes(view):
+    # "March 2027" only exists in the picker because of this one-time bill.
+    bill_id = bill_repo.add(Bill(name="New Roof", amount=Decimal("5000"), due_day=1,
+                                  due_month=3, due_year=2027, recurrence="one-time"))
+    view._refresh()
+    _select(view, "March 2027")
+    assert view._month_picker.currentText() == "March 2027"
+
+    # Deleting it removes "March 2027" from the rebuilt picker entirely —
+    # distinct from the empty-currentText "first population" case, this is
+    # a previously-selected month disappearing out from under the user.
+    bill_repo.delete(bill_id)
+    view._refresh()
+
+    assert view._month_picker.currentText() == "June 2026"

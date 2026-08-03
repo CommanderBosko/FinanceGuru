@@ -30,6 +30,11 @@ def _month_entries(bills: list[Bill], goals: list[Goal]) -> list[tuple[str, Mont
     start/target month (the span its linked Goal bill can appear or
     disappear across). Always includes the current month so the picker
     never starts empty on a fresh database.
+
+    Sorted oldest-first, unlike Payments/Income's newest-first picker —
+    this one routinely spans both past and future months (a yearly bill's
+    next occurrence, a goal's future start date), so chronological order
+    reads better than a log-style "most recent first" list.
     """
     today = date.today()
     months = {(today.year, today.month)}
@@ -62,9 +67,9 @@ def _visible_in_month(bill: Bill, key: MonthKey, goal_starts: dict[int, str]) ->
     year, month = key
     if not bill.is_due_in(year, month):
         return False
-    start = goal_starts.get(bill.id) if bill.id is not None else None
-    if start:
-        start_date = date.fromisoformat(start)
+    start_iso = goal_starts.get(bill.id) if bill.id is not None else None
+    if start_iso:
+        start_date = date.fromisoformat(start_iso)
         if (year, month) < (start_date.year, start_date.month):
             return False
     return True
