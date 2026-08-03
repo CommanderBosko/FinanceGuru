@@ -22,13 +22,13 @@ def get_all() -> list[dict]:
     return records
 
 
-def add(payment: Payment) -> int | None:
+def add(payment: Payment) -> int:
     with get_connection() as conn:
         cur = conn.execute(
             "INSERT INTO payments (bill_id, amount, paid_date, notes) VALUES (?, ?, ?, ?)",
             (payment.bill_id, payment.amount, payment.paid_date, payment.notes),
         )
-        return cur.lastrowid
+        return cur.lastrowid or 0
 
 
 def update(payment: Payment) -> None:

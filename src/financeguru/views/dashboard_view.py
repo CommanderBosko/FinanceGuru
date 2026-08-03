@@ -1,3 +1,4 @@
+import calendar
 from datetime import date
 
 from PySide6.QtCore import Qt
@@ -90,9 +91,18 @@ class DashboardView(QWidget):
         total = ZERO
         paid = ZERO
 
+        # A bill's due_day (1-31) may exceed the number of days in the
+        # month actually being evaluated (e.g. due_day=31 from a goal
+        # mirrored against a 31-day target month, viewed in February).
+        # Clamp against *this* month's real last day before comparing to
+        # today.day, or the day can never arrive and the bill is silently
+        # never flagged due/overdue.
+        last_day_this_month = calendar.monthrange(today.year, today.month)[1]
+
         for row, bill in enumerate(bills):
             is_paid = bill.id in paid_ids
-            is_overdue = not is_paid and bill.due_day < today.day
+            effective_due_day = min(bill.due_day, last_day_this_month)
+            is_overdue = not is_paid and effective_due_day < today.day
 
             if is_paid:
                 status = "Paid ✓"
@@ -101,11 +111,11 @@ class DashboardView(QWidget):
                 status = "Overdue"
                 color = _RED
             else:
-                status = f"Due on {bill.due_day}"
-                color = _ORANGE if bill.due_day == today.day else None
+                status = f"Due on {effective_due_day}"
+                color = _ORANGE if effective_due_day == today.day else None
 
             amount_item = right(money(bill.amount), float(bill.amount))
-            due_item = center(str(bill.due_day), bill.due_day)
+            due_item = center(str(effective_due_day), effective_due_day)
             status_item = center(status)
 
             if color:

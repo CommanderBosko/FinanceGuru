@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.payment_dialog import PaymentDialog
-from financeguru.views._month_filter import month_entries, month_prefix
+from financeguru.views._month_filter import month_prefix, populate_month_picker
 from financeguru.views._table import center, money, right
 
 
@@ -72,7 +72,7 @@ class PaymentsView(QWidget):
     def _refresh(self) -> None:
         rows = payment_repo.get_all()  # sorted DESC, so the last row is earliest
         earliest = rows[-1]["paid_date"] if rows else None
-        self._populate_month_picker(earliest)
+        populate_month_picker(self._month_picker, earliest)
         key = self._month_picker.currentData()
         if key is not None:
             prefix = month_prefix(key)
@@ -93,29 +93,6 @@ class PaymentsView(QWidget):
             self._table.setItem(row, 2, date_item)
             self._table.setItem(row, 3, QTableWidgetItem(rec["notes"] or ""))
         self._table.setSortingEnabled(True)
-
-    def _populate_month_picker(self, earliest_date: str | None) -> None:
-        """Rebuild the month dropdown, preserving the selection by label if possible.
-
-        Called from `_refresh` (which already has the freshest data on hand for
-        `earliest_date`), so the list grows as new history is added instead of
-        needing a separate refresh path.
-        """
-        previous = self._month_picker.currentText()
-        entries = month_entries(earliest_date)
-        labels = [label for label, _ in entries]
-
-        self._month_picker.blockSignals(True)
-        self._month_picker.clear()
-        for label, key in entries:
-            self._month_picker.addItem(label, key)
-        if previous in labels:
-            self._month_picker.setCurrentIndex(labels.index(previous))
-        else:
-            # First population, or the prior selection vanished — default to
-            # the current month, which is always index 1 (index 0 is "All").
-            self._month_picker.setCurrentIndex(1 if len(labels) > 1 else 0)
-        self._month_picker.blockSignals(False)
 
     @staticmethod
     def _haystack(rec: dict) -> str:

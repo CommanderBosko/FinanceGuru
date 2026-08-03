@@ -13,7 +13,7 @@ from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import incomes as income_repo
-from financeguru.views._month_filter import month_entries, month_prefix
+from financeguru.views._month_filter import month_prefix, populate_month_picker
 from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
@@ -142,7 +142,7 @@ class SalaryView(QWidget):
     def _refresh(self) -> None:
         self._incomes = income_repo.get_all()  # sorted DESC, so the last row is earliest
         earliest = self._incomes[-1].pay_date if self._incomes else None
-        self._populate_month_picker(earliest)
+        populate_month_picker(self._month_picker, earliest)
         key = self._month_picker.currentData()
         if key is not None:
             prefix = month_prefix(key)
@@ -151,29 +151,6 @@ class SalaryView(QWidget):
             self._rows = self._incomes
         self._render_table()
         self._recompute(key)
-
-    def _populate_month_picker(self, earliest_date: str | None) -> None:
-        """Rebuild the month dropdown, preserving the selection by label if possible.
-
-        Called from `_refresh` (which already has the freshest data on hand for
-        `earliest_date`), so the list grows as new history is added instead of
-        needing a separate refresh path.
-        """
-        previous = self._month_picker.currentText()
-        entries = month_entries(earliest_date)
-        labels = [label for label, _ in entries]
-
-        self._month_picker.blockSignals(True)
-        self._month_picker.clear()
-        for label, key in entries:
-            self._month_picker.addItem(label, key)
-        if previous in labels:
-            self._month_picker.setCurrentIndex(labels.index(previous))
-        else:
-            # First population, or the prior selection vanished — default to
-            # the current month, which is always index 1 (index 0 is "All").
-            self._month_picker.setCurrentIndex(1 if len(labels) > 1 else 0)
-        self._month_picker.blockSignals(False)
 
     def _render_table(self) -> None:
         self._table.setSortingEnabled(False)
@@ -189,28 +166,56 @@ class SalaryView(QWidget):
 
     def _recompute(self, key: tuple[int, int] | None) -> None:
         total_income = sum(i.amount for i in self._rows)
-        total_bills = sum(monthly_bill(b) for b in bill_repo.get_all())
         is_all = key is None
         if is_all:
             scope = "All-Time"
             total_expenses = expense_repo.total_all()
+            # "Monthly Bills" is a per-month recurring-obligation figure —
+            # monthly_bill() only reflects each bill's *current* amount and
+            # active flag, with no history of what was owed in past months.
+            # Subtracting one month of today's bills from all-time income and
+            # expenses would be nonsensical, and there's no way to scale it
+            # to the window without pretending bills never changed. Treat the
+            # bills-derived stats as not applicable for "All" instead.
+            total_bills = None
         else:
             scope = self._month_picker.currentText()
             total_expenses = expense_repo.total_for_month(*key)
-        extra = total_income - total_bills - total_expenses
+            total_bills = sum(monthly_bill(b) for b in bill_repo.get_all())
 
         self._lbl_income.setText(f"{scope} Income\n{money(total_income)}")
-        self._lbl_bills.setText(f"Monthly Bills\n−{money(total_bills)}")
         self._lbl_expenses.setText(f"{scope} Expenses\n−{money(total_expenses)}")
-        extra_color = _GREEN if extra >= 0 else _RED
-        label = "Extra Spending Money" if extra >= 0 else "Over Budget"
-        self._lbl_extra.setText(f"{label}\n{money(extra)}")
-        self._lbl_extra.setStyleSheet(f"color: {extra_color};")
 
-        self._update_savings(extra, is_all)
+        if total_bills is None:
+            self._lbl_bills.setText("Monthly Bills\nN/A")
+            self._lbl_extra.setText("Extra Spending Money\nN/A")
+            self._lbl_extra.setStyleSheet("")
+            extra = None
+        else:
+            extra = total_income - total_bills - total_expenses
+            self._lbl_bills.setText(f"Monthly Bills\n−{money(total_bills)}")
+            extra_color = _GREEN if extra >= 0 else _RED
+            label = "Extra Spending Money" if extra >= 0 else "Over Budget"
+            self._lbl_extra.setText(f"{label}\n{money(extra)}")
+            self._lbl_extra.setStyleSheet(f"color: {extra_color};")
 
-    def _update_savings(self, extra: Decimal, is_all: bool) -> None:
+        self._update_savings(extra)
+
+    def _update_savings(self, extra: Decimal | None) -> None:
         pct = self._slider.value()
+
+        if extra is None:
+            # All-time view: no valid Monthly Bills figure means no
+            # extra/spend split to visualize either (see _recompute).
+            self._save_seg.setStyleSheet("")
+            self._save_seg.setText("")
+            self._spend_seg.hide()
+            self._bar.setStretch(0, 1)
+            self._bar.setStretch(1, 0)
+            self._savings_detail.setText(
+                "Select a specific month to see your savings breakdown."
+            )
+            return
 
         if extra <= 0:
             self._save_seg.setStyleSheet(f"background: {_RED}; color: white;")
@@ -234,15 +239,10 @@ class SalaryView(QWidget):
         self._bar.setStretch(0, max(0, round(save)))
         self._bar.setStretch(1, max(0, round(spend)))
 
-        if is_all:
-            self._savings_detail.setText(
-                f"Set aside {money(save)}   ·   Free to spend {money(spend)}"
-            )
-        else:
-            self._savings_detail.setText(
-                f"Set aside {money(save)}/mo  ({money(save * 12)}/yr)"
-                f"   ·   Free to spend {money(spend)}/mo"
-            )
+        self._savings_detail.setText(
+            f"Set aside {money(save)}/mo  ({money(save * 12)}/yr)"
+            f"   ·   Free to spend {money(spend)}/mo"
+        )
 
     # ── Slots ─────────────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from financeguru.models.bill import Bill
@@ -32,6 +33,56 @@ def test_get_all_orders_by_due_day():
     bills.add(_sample(name="Early", due_day=2))
     names = [b.name for b in bills.get_all()]
     assert names == ["Early", "Late"]
+
+
+def test_get_all_places_yearly_and_one_time_bills_by_actual_due_distance():
+    # Regression for interleaving bug: a plain `ORDER BY due_day` would put
+    # the December one-time bill (due_day=5) before the monthly bill
+    # (due_day=20) even though, viewed from January, December is 11 months
+    # away — nowhere near "soonest". Bill.due_sort_key fixes that by using
+    # months-until-next-occurrence as the primary key.
+    today = date(2026, 1, 10)
+
+    bills.add(_sample(name="Monthly", due_day=20, recurrence="monthly"))
+    bills.add(Bill(name="December One-Time", amount=Decimal("400"), due_day=5,
+                    due_month=12, due_year=2026, recurrence="one-time"))
+    bills.add(Bill(name="March Yearly", amount=Decimal("900"), due_day=1,
+                    due_month=3, recurrence="yearly"))
+    bills.add(Bill(name="Overdue One-Time", amount=Decimal("50"), due_day=1,
+                    due_month=11, due_year=2025, recurrence="one-time"))
+
+    names = [b.name for b in bills.get_all(today)]
+    # Overdue one-time (2 months in the past) sorts first; then the monthly
+    # bill (always "this month"); then March yearly (2 months out); then the
+    # December one-time bill (11 months out) sorts last.
+    assert names == ["Overdue One-Time", "Monthly", "March Yearly", "December One-Time"]
+
+
+def test_get_all_orders_monthly_bills_by_due_day_regardless_of_today():
+    # Monthly bills stay grouped by due_day alone — their relative order must
+    # not flip depending on whether "today" is before or after due_day.
+    bills.add(_sample(name="Late", due_day=28, recurrence="monthly"))
+    bills.add(_sample(name="Early", due_day=2, recurrence="monthly"))
+
+    early_in_month = [b.name for b in bills.get_all(date(2026, 1, 1))]
+    late_in_month = [b.name for b in bills.get_all(date(2026, 1, 25))]
+    assert early_in_month == ["Early", "Late"]
+    assert late_in_month == ["Early", "Late"]
+
+
+def test_get_all_wraps_yearly_bill_to_next_year_once_due_month_passed():
+    today = date(2026, 6, 15)
+    bills.add(_sample(name="Monthly", due_day=1, recurrence="monthly"))
+    bills.add(Bill(name="March Yearly (passed)", amount=Decimal("1"), due_day=1,
+                    due_month=3, recurrence="yearly"))
+    bills.add(Bill(name="August Yearly (upcoming)", amount=Decimal("1"), due_day=1,
+                    due_month=8, recurrence="yearly"))
+
+    names = [b.name for b in bills.get_all(today)]
+    # August (2 months out) comes before March, which has already happened
+    # this year and so wraps to next March (9 months out) — it does not sort
+    # as if it were "overdue" ahead of the monthly bill.
+    assert names == ["Monthly", "August Yearly (upcoming)", "March Yearly (passed)"]
 
 
 def test_update_persists_changes():

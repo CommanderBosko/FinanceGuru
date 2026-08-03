@@ -1,15 +1,29 @@
+from datetime import date
+
 from financeguru.db import get_connection
 from financeguru.models.bill import Bill
 from financeguru.money import to_decimal
 
 
-def get_all() -> list[Bill]:
+def get_all(today: date | None = None) -> list[Bill]:
+    """All bills in chronological "next due" order, relative to ``today``.
+
+    A plain ``ORDER BY due_day`` interleaves monthly bills with yearly/
+    one-time ones in a way that ignores how far off their due_month/due_year
+    actually is, so the ordering is computed in Python via
+    ``Bill.due_sort_key`` instead (see that method for the exact rules).
+    ``today`` defaults to the real current date; tests pass a fixed one for
+    determinism.
+    """
+    today = today or date.today()
     with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM bills ORDER BY due_day").fetchall()
-    return [_row_to_bill(r) for r in rows]
+        rows = conn.execute("SELECT * FROM bills ORDER BY id").fetchall()
+    result = [_row_to_bill(r) for r in rows]
+    result.sort(key=lambda b: b.due_sort_key(today))
+    return result
 
 
-def add(bill: Bill) -> int | None:
+def add(bill: Bill) -> int:
     with get_connection() as conn:
         cur = conn.execute(
             "INSERT INTO bills"
@@ -18,7 +32,7 @@ def add(bill: Bill) -> int | None:
             (bill.name, bill.amount, bill.due_day, bill.due_month, bill.due_year,
              bill.recurrence, int(bill.is_active), bill.notes, bill.category),
         )
-        return cur.lastrowid
+        return cur.lastrowid or 0
 
 
 def update(bill: Bill) -> None:

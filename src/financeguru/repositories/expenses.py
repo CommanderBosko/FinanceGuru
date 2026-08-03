@@ -32,14 +32,14 @@ def total_all() -> Decimal:
     return to_decimal(row["total"])
 
 
-def add(expense: Expense) -> int | None:
+def add(expense: Expense) -> int:
     with get_connection() as conn:
         cur = conn.execute(
             "INSERT INTO expenses (amount, spent_date, category, notes)"
             " VALUES (?, ?, ?, ?)",
             (expense.amount, expense.spent_date, expense.category, expense.notes),
         )
-        return cur.lastrowid
+        return cur.lastrowid or 0
 
 
 def update(expense: Expense) -> None:

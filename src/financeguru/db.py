@@ -312,6 +312,11 @@ def backup_database(dest: Path) -> None:
     even if a WAL sidecar holds uncommitted-to-main pages.
     """
     dest = Path(dest)
+    # Refuse to write through a pre-existing symlink — on these multi-user
+    # machines another local user could plant one at a predictable backup
+    # filename to redirect the plaintext financial data into a file they own.
+    if dest.is_symlink():
+        raise ValueError(f"refusing to write backup through a symlink: {dest}")
     # Lock the destination down *before* sqlite writes financial data into it, so
     # the backup is never momentarily world-readable on these multi-user machines.
     dest.touch(exist_ok=True)
@@ -442,7 +447,13 @@ def export_all_csv(dest_dir: Path) -> list[Path]:
             # The CSV holds the same plaintext financial data as the DB. Create it
             # owner-only *before* writing so it's never momentarily world-readable
             # on these multi-user machines (open(path,"w") would use the umask).
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            # O_NOFOLLOW refuses to write through a pre-existing symlink, which
+            # another local user could plant at a predictable export filename.
+            fd = os.open(
+                path,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                0o600,
+            )
             with open(fd, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow([_csv_safe(col[0]) for col in cur.description])

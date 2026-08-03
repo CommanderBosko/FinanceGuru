@@ -122,6 +122,74 @@ def test_future_one_time_is_absent(qapp):
     assert view._lbl_total.text() == "Total Bills\n$0.00"
 
 
+def test_due_day_31_clamps_to_shorter_months_actual_last_day(qapp, monkeypatch):
+    # Regression: a goal mirrored into a monthly Bill derives due_day from
+    # its target month (e.g. December -> 31), but the dashboard evaluates
+    # that Bill against whatever month is *currently* being viewed. A naive
+    # ``bill.due_day < today.day`` comparison can never trigger in a
+    # shorter month (today.day tops out at 28 in February), so the bill
+    # silently never shows as due/overdue all month long. February 2026 is
+    # not a leap year, so it has 28 days.
+    import financeguru.views.dashboard_view as dashboard_view
+
+    class _FixedFeb(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 2, 28)
+
+    monkeypatch.setattr(dashboard_view, "date", _FixedFeb)
+
+    bills.add(Bill(name="Goal: laptop", amount=Decimal("100.00"), due_day=31))
+
+    view = _make_view()
+    rows = _rows(view)
+    # Clamped to February's real last day (28), and correctly flagged due
+    # on that day rather than perpetually showing the impossible "31".
+    assert rows["Goal: laptop"] == ("28", "Due on 28")
+
+
+def test_due_day_31_not_yet_due_before_shorter_months_last_day(qapp, monkeypatch):
+    # One day before the clamped due day, the same bill must not be flagged
+    # due/overdue yet.
+    import financeguru.views.dashboard_view as dashboard_view
+
+    class _FixedFeb(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 2, 27)
+
+    monkeypatch.setattr(dashboard_view, "date", _FixedFeb)
+
+    bills.add(Bill(name="Goal: laptop", amount=Decimal("100.00"), due_day=31))
+
+    view = _make_view()
+    rows = _rows(view)
+    assert rows["Goal: laptop"] == ("28", "Due on 28")
+
+
+def test_due_day_31_clamps_in_april(qapp, monkeypatch):
+    # April has 30 days (the other shorter-month example from the bug
+    # report, alongside February). A clamped due_day can only ever reach
+    # "due today" (never "overdue") within the same month it clamps in,
+    # since the clamp ceiling (last_day_this_month) and today.day's maximum
+    # are the same value — genuine "overdue" only arises when due_day is
+    # already <= the month length (see test_monthly_bills_keep_existing_behavior).
+    import financeguru.views.dashboard_view as dashboard_view
+
+    class _FixedApr(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 4, 30)
+
+    monkeypatch.setattr(dashboard_view, "date", _FixedApr)
+
+    bills.add(Bill(name="Goal: laptop", amount=Decimal("100.00"), due_day=31))
+
+    view = _make_view()
+    rows = _rows(view)
+    assert rows["Goal: laptop"] == ("30", "Due on 30")
+
+
 def test_monthly_bills_keep_existing_behavior(qapp):
     bills.add(Bill(name="Rent", amount=Decimal("1200.00"), due_day=1))
     rent_paid_id = bills.add(Bill(name="Power", amount=Decimal("80.00"), due_day=5))

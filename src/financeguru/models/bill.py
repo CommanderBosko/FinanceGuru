@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from financeguru.categories import DEFAULT_CATEGORY
@@ -62,3 +63,30 @@ class Bill:
         # Monthly bills are due every month and are already covered by the
         # current-month logic.
         return None
+
+    def due_sort_key(self, today: date) -> tuple[int, int]:
+        """Sort key for a chronological "next due" listing, relative to ``today``.
+
+        Monthly bills recur every month, so they're always imminent — they
+        stay grouped in the same bucket and ordered by ``due_day`` alone
+        rather than jumping around as the calendar rolls over. Yearly bills
+        use the number of months until their next occurrence, wrapping
+        forward to next year once this year's ``due_month`` has passed (they
+        never sort as "overdue" — see ``overdue_carryover_start`` for that
+        separate payment-tracking concern). One-time bills use the literal
+        number of months to their fixed ``due_year``/``due_month``, which
+        goes negative once the date has passed — an unpaid one-time bill
+        that's overdue sorts first, ahead of everything else.
+        """
+        if self.recurrence == "monthly":
+            months_until = 0
+        elif self.recurrence == "yearly" and self.due_month is not None:
+            months_until = (self.due_month - today.month) % 12
+        elif (self.recurrence == "one-time" and self.due_month is not None
+                and self.due_year is not None):
+            months_until = (self.due_year - today.year) * 12 + (self.due_month - today.month)
+        else:
+            # Malformed yearly/one-time row missing its month/year — push to
+            # the end rather than guess.
+            months_until = 999
+        return (months_until, self.due_day)

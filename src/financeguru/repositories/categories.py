@@ -40,13 +40,32 @@ def add(name: str) -> int | None:
 
 
 def rename(category_id: int, new_name: str) -> None:
-    """Rename a category. The ``is_protected=0`` guard means protected
-    categories silently cannot be renamed even if a caller tries."""
+    """Rename a category and re-tag any bills/expenses carrying the old name,
+    so a user rename is complete rather than leaving historical records
+    permanently split across the old and new names. Mirrors
+    ``db._rename_category``, the equivalent helper for the built-in seeded
+    renames. The ``is_protected=0`` guard means protected categories silently
+    cannot be renamed even if a caller tries. Renaming to a name already used
+    by a different category raises ``sqlite3.IntegrityError`` (the ``name``
+    column's UNIQUE constraint) — callers are expected to check first, as
+    ``category_dialog.py`` does."""
+    new_name = new_name.strip()
     with get_connection() as conn:
+        row = conn.execute(
+            "SELECT name FROM categories WHERE id=? AND is_protected=0",
+            (category_id,),
+        ).fetchone()
+        if row is None:
+            return  # missing id, or protected — silent no-op as before
+        old_name = row["name"]
+        if old_name == new_name:
+            return
         conn.execute(
             "UPDATE categories SET name=? WHERE id=? AND is_protected=0",
-            (new_name.strip(), category_id),
+            (new_name, category_id),
         )
+        conn.execute("UPDATE bills SET category=? WHERE category=?", (new_name, old_name))
+        conn.execute("UPDATE expenses SET category=? WHERE category=?", (new_name, old_name))
 
 
 def delete(category_id: int) -> None:

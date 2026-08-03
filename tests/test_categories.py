@@ -78,6 +78,27 @@ def test_rename_user_category():
     assert "Gifts" not in category_repo.names()
 
 
+def test_rename_user_category_retags_existing_bills_and_expenses():
+    # A user rename (via category_dialog.py) must behave like the built-in
+    # startup renames (_rename_category): historical bills/expenses should
+    # follow the new name, not stay split across old and new forever.
+    cid = category_repo.add("Gifts")
+    bid = bill_repo.add(Bill(name="Birthday", amount=Decimal("25"), due_day=5, category="Gifts"))
+    expense_repo.add(Expense(amount=Decimal("15"), spent_date="2026-06-01", category="Gifts"))
+
+    category_repo.rename(cid, "Presents")
+
+    assert next(b for b in bill_repo.get_all() if b.id == bid).category == "Presents"
+    assert expense_repo.get_all()[0].category == "Presents"
+
+
+def test_rename_to_existing_name_raises_integrity_error():
+    category_repo.add("Gifts")
+    cid = category_repo.add("Presents")
+    with pytest.raises(sqlite3.IntegrityError):
+        category_repo.rename(cid, "Gifts")
+
+
 def test_rename_protected_category_is_a_no_op():
     other = next(c for c in category_repo.get_all() if c.name == DEFAULT_CATEGORY)
     category_repo.rename(other.id, "Misc")

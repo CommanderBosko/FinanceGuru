@@ -9,7 +9,7 @@ from financeguru.repositories import expenses as expense_repo
 from financeguru.views.category_dialog import CategoryDialog
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.expense_dialog import ExpenseDialog
-from financeguru.views._month_filter import month_entries, month_prefix
+from financeguru.views._month_filter import month_prefix, populate_month_picker
 from financeguru.views._table import money, right
 
 
@@ -76,7 +76,7 @@ class ExpensesView(QWidget):
     def _refresh(self) -> None:
         expenses = expense_repo.get_all()  # sorted DESC, so the last row is earliest
         earliest = expenses[-1].spent_date if expenses else None
-        self._populate_month_picker(earliest)
+        populate_month_picker(self._month_picker, earliest)
         key = self._month_picker.currentData()
         if key is not None:
             prefix = month_prefix(key)
@@ -95,29 +95,6 @@ class ExpensesView(QWidget):
             self._table.setItem(row, 2, QTableWidgetItem(expense.category))
             self._table.setItem(row, 3, QTableWidgetItem(expense.notes or ""))
         self._table.setSortingEnabled(True)
-
-    def _populate_month_picker(self, earliest_date: str | None) -> None:
-        """Rebuild the month dropdown, preserving the selection by label if possible.
-
-        Called from `_refresh` (which already has the freshest data on hand for
-        `earliest_date`), so the list grows as new history is added instead of
-        needing a separate refresh path.
-        """
-        previous = self._month_picker.currentText()
-        entries = month_entries(earliest_date)
-        labels = [label for label, _ in entries]
-
-        self._month_picker.blockSignals(True)
-        self._month_picker.clear()
-        for label, key in entries:
-            self._month_picker.addItem(label, key)
-        if previous in labels:
-            self._month_picker.setCurrentIndex(labels.index(previous))
-        else:
-            # First population, or the prior selection vanished — default to
-            # the current month, which is always index 1 (index 0 is "All").
-            self._month_picker.setCurrentIndex(1 if len(labels) > 1 else 0)
-        self._month_picker.blockSignals(False)
 
     @staticmethod
     def _haystack(expense: Expense) -> str:

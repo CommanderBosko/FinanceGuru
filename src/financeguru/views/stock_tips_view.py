@@ -167,6 +167,15 @@ class StockTipsView(QWidget):
             self._load()
 
     def _on_refresh(self) -> None:
+        # The toolbar button is disabled while a fetch is in flight, but the
+        # row context menu's "Refresh Analyst Data" entry has no such guard
+        # and can still invoke this handler — without this check it would
+        # tear down self._fetcher (a QThread that isRunning()) via
+        # deleteLater() below, which is exactly the "QThread destroyed while
+        # still running" crash stop_fetcher() elsewhere in the app is built
+        # to avoid.
+        if self._fetcher is not None and self._fetcher.isRunning():
+            return
         if not self._tips:
             return
         tickers = list({t.ticker for t in self._tips})
