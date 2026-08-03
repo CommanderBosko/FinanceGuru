@@ -4,6 +4,34 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-08-02 — Month Filters, Sortable Headers, Income Redesign x2, Goals Start Date, Audit Fixes
+
+**Focus**: A day of feature requests handled back-to-back (month/year filters, sortable tables, Income model changes, Goals start date), closed out with a full `/audit` pass.
+
+### What changed (and why)
+- **Month/year dropdown filters** replaced the "This month only" checkbox on Payments and Expenses, via a new shared `views/_month_filter.py` module — a plain on/off toggle couldn't browse a specific past month.
+- **Click-to-sort headers on every table** (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Goals, Debt Snowball's debts/lump-sum tables). Along the way, found and fixed a real latent bug: every view resolved "the selected row" by indexing a parallel Python list with the table's *visual* row position — correct only until sorting could reorder rows, at which point edit/delete/mark-paid could silently act on the wrong record. Fixed by reading each row's identity back off Qt's `UserRole` item data instead. Verified with a real simulated mouse click on a header (screenshots confirm the sort arrow and correct reordering both directions), not just a programmatic `sortByColumn` call.
+- **Income redesigned twice in direct succession.** First commit collapsed the old frequency/pay-days model to a single recurring `pay_day`. Immediately after, adding the same month/year dropdown to Income turned out to be impossible against a bare day-of-month with no year — flagged as a clarifying question rather than forced. The user chose to make Income a dated paycheck log (`pay_date`), reversing the just-shipped design. The upgrade migration wipes pre-existing income rows (no real date to backfill from) rather than guessing — an explicit, flagged, destructive choice.
+- **Goals gained a `start_date`** — `monthly_savings()` now spans `start_date → target_date` instead of `today → target_date`, so the required contribution is fixed when a goal is created/edited instead of drifting as time passes. Existing goals backfilled on migration.
+- **Full `/audit` pass** (whole-tree, tree was clean) found and fixed 3 real 🔴 bugs: a QThread-destroyed-while-running crash reachable via the row context menu's refresh entry on Stocks/Stock Tips (bypassed the toolbar button's in-flight guard); a Salary "All-time" view producing a nonsense Extra-Spending-Money figure (mixed an all-time total with one month's bill obligation); category rename not re-tagging existing bills/expenses. Plus dashboard `due_day` clamping for goal-mirrored bills in short months, de-duplicated month-picker code, consistent repository `add()` return types, and one hardening fix (backup/CSV-export symlink-following — verified confidence only 3/10, not realistically exploitable, but a free one-line fix). Security-vulnerability identification found 6 candidates; parallel false-positive-verification on the 3 most plausible filtered all of them out.
+
+### Decisions
+- Income's design reversal was a deliberate correction once the month-filter requirement exposed a gap, not a mistake — both commits were sound given what was known when each was made.
+- Row-selection fix was done as one consistent pattern by a single agent across every view, not parallelized — divergent implementations risked real data-integrity bugs (editing the wrong record).
+- Debt Snowball's payoff-plan/schedule tables stay unsorted, per the user's call — they're computed, time-ordered output, not a browsable record list.
+- The audit's 5 independent fixes were parallelized across sub-agents (disjoint file sets); the small, already-understood `db.py` symlink hardening was done directly instead of spawning a 6th agent.
+
+### Issues / surprises
+- This session-closer run was itself interrupted once mid-close: the first pass only skimmed the tail of a 13-transcript scan and mistook an old (2026-07-16) close narrative for current context. The transcript-cutoff helper (`find-last-skill-invocation.sh`) had also picked a stale marker (2026-07-16) instead of the real last close (2026-07-26, confirmed via the `chore(session)` commit `f7f0549` and the existing session-summary entries below) — worth a `skill-upgrade` look at why the detector drifted.
+- All 6 feature/fix commits were made locally throughout the day with pushing deliberately deferred until this close-out.
+
+### Next session
+- No app-facing next steps opened this session — see `project-state.md`'s Next Steps (natalie-laptop rebuild, Charts GUI eyeball, hardware verification of non-Linux builds, multi-user partitioning) for what's actually open.
+
+**Commits**: `8909011..d25bfe4` (6 commits)
+
+---
+
 ## Session: 2026-07-26 — watch-ci Skill + Skill-Audit Fixes
 
 **Focus**: User asked to run `/skill-suggestion` and `/skill-upgrade` in sequence, then `/skill-audit` once those landed — three separate skill invocations rather than the bundled `/improve-system`.
@@ -104,28 +132,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - Real-display GUI eyeball of the new trend chart + existing charts polish items; decide whether the stacked spending chart should exclude Savings.
 
 **Commits**: `3691ece..1ebac14` (4 commits)
-
----
-
-## Session: 2026-07-07 (evening) — qt-launch Regression Guard
-
-**Focus**: User asked whether anything else could mitigate the packaged-app Qt bug (fixed earlier this session) from recurring on this or other hosts.
-
-### What changed (and why)
-- **Added `checks.qt-launch` to `flake.nix`** — launches the built `packages.${system}.default` binary for real under `xvfb-run` with `QT_QPA_PLATFORM=xcb`, failing `nix flake check` (and CI) if the process doesn't stay running. The prior `package` check only proved the derivation builds, which is exactly why the earlier bug shipped silently — `nix build` succeeded the whole time the app was broken.
-- Used `xcb` under a virtual display rather than `offscreen` specifically so the check also exercises the `libxcb-cursor` dlopen path (the other half of the original bug), which `offscreen` wouldn't touch.
-- Updated the `qt-nix-wrapper-diagnose` skill to note its manual live-run step is now a debugging aid, not the only gate.
-
-### Decisions
-- Verified the check both ways before trusting it: deliberately broke it (bad `QT_QPA_PLATFORM`) to confirm it fails with a useful log, then confirmed it passes on the real fix.
-
-### Issues / surprises
-- None — straightforward, scoped addition.
-
-### Next session
-- Same as this morning's: bump `financeguru` in the NixOS repo and rebuild natalie-laptop (still pending — this session only added a CI guard, didn't ship the fix to the host).
-
-**Commits**: `cec48ba` (1 commit)
 
 ---
 

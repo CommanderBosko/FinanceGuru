@@ -1,3 +1,25 @@
+## Session: 2026-07-07 (evening) — qt-launch Regression Guard
+
+**Focus**: User asked whether anything else could mitigate the packaged-app Qt bug (fixed earlier this session) from recurring on this or other hosts.
+
+### What changed (and why)
+- **Added `checks.qt-launch` to `flake.nix`** — launches the built `packages.${system}.default` binary for real under `xvfb-run` with `QT_QPA_PLATFORM=xcb`, failing `nix flake check` (and CI) if the process doesn't stay running. The prior `package` check only proved the derivation builds, which is exactly why the earlier bug shipped silently — `nix build` succeeded the whole time the app was broken.
+- Used `xcb` under a virtual display rather than `offscreen` specifically so the check also exercises the `libxcb-cursor` dlopen path (the other half of the original bug), which `offscreen` wouldn't touch.
+- Updated the `qt-nix-wrapper-diagnose` skill to note its manual live-run step is now a debugging aid, not the only gate.
+
+### Decisions
+- Verified the check both ways before trusting it: deliberately broke it (bad `QT_QPA_PLATFORM`) to confirm it fails with a useful log, then confirmed it passes on the real fix.
+
+### Issues / surprises
+- None — straightforward, scoped addition.
+
+### Next session
+- Same as this morning's: bump `financeguru` in the NixOS repo and rebuild natalie-laptop (still pending — this session only added a CI guard, didn't ship the fix to the host).
+
+**Commits**: `cec48ba` (1 commit)
+
+---
+
 ## Session: 2026-07-07 — Packaged-App Qt Fix + `/improve-system` Sweep
 
 **Focus**: Fix the *installed* FinanceGuru package failing to launch on natalie-laptop (`no Qt platform plugin could be initialized`), then run a full `/improve-system` maintenance sweep.
