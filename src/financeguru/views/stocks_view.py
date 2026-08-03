@@ -53,6 +53,8 @@ class StocksView(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._table.setSortingEnabled(True)
         layout.addWidget(self._table)
 
         self._footer = QLabel()
@@ -83,6 +85,7 @@ class StocksView(QWidget):
 
     def _refresh(self) -> None:
         self._stocks = stock_repo.get_all()
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._stocks))
         total_cost = ZERO
         total_market = ZERO
@@ -95,10 +98,12 @@ class StocksView(QWidget):
             current = to_decimal(raw_price) if raw_price is not None else None
 
             shares_str = f"{stock.shares:,.4f}".rstrip("0").rstrip(".")
-            self._table.setItem(row, 0, center(stock.ticker))
-            self._table.setItem(row, 1, right(shares_str))
-            self._table.setItem(row, 2, right(money(stock.purchase_price)))
-            self._table.setItem(row, 3, right(money(cost_basis)))
+            ticker_item = center(stock.ticker)
+            ticker_item.setData(Qt.ItemDataRole.UserRole, stock)
+            self._table.setItem(row, 0, ticker_item)
+            self._table.setItem(row, 1, right(shares_str, float(stock.shares)))
+            self._table.setItem(row, 2, right(money(stock.purchase_price), float(stock.purchase_price)))
+            self._table.setItem(row, 3, right(money(cost_basis), float(cost_basis)))
 
             if current is not None:
                 market_value = stock.shares * current
@@ -107,10 +112,10 @@ class StocksView(QWidget):
                 total_market += market_value
                 color = _GREEN if gain >= 0 else _RED
 
-                price_item = right(money(current))
-                mv_item = right(money(market_value))
-                gain_item = right(f"${gain:+,.2f}")
-                pct_item = right(f"{gain_pct:+.2f}%")
+                price_item = right(money(current), float(current))
+                mv_item = right(money(market_value), float(market_value))
+                gain_item = right(f"${gain:+,.2f}", float(gain))
+                pct_item = right(f"{gain_pct:+.2f}%", float(gain_pct))
                 for item in (gain_item, pct_item):
                     item.setForeground(color)
 
@@ -119,11 +124,15 @@ class StocksView(QWidget):
                 self._table.setItem(row, 6, gain_item)
                 self._table.setItem(row, 7, pct_item)
             else:
+                # Give the placeholder a sort_key too so the column stays
+                # uniformly SortableItem — otherwise comparing a placeholder
+                # against a real numeric item falls back to text order.
                 for col in range(4, 8):
-                    self._table.setItem(row, col, center(_PLACEHOLDER))
+                    self._table.setItem(row, col, center(_PLACEHOLDER, float("-inf")))
 
             self._table.setItem(row, 8, QTableWidgetItem(stock.notes or ""))
 
+        self._table.setSortingEnabled(True)
         parts = [f"Cost basis: {money(total_cost)}"]
         if has_prices and total_market:
             total_gain = total_market - total_cost
@@ -136,7 +145,8 @@ class StocksView(QWidget):
         row = self._table.currentRow()
         if row < 0 or not self._table.selectedItems():
             return None
-        return self._stocks[row]
+        item = self._table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_selection_changed(self) -> None:
         enabled = bool(self._table.selectedItems())

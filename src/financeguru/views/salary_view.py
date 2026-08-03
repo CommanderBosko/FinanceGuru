@@ -48,6 +48,8 @@ class SalaryView(QWidget):
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
         self._table.setMaximumHeight(220)
+        self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._table.setSortingEnabled(True)
 
         # ── Monthly budget summary ────────────────────────────────────────
         budget_box = QGroupBox("Monthly Budget")
@@ -135,19 +137,23 @@ class SalaryView(QWidget):
         self._recompute()
 
     def _render_table(self) -> None:
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._incomes))
         for row, inc in enumerate(self._incomes):
             monthly = monthly_income(inc)
-            self._table.setItem(row, 0, QTableWidgetItem(inc.name))
-            self._table.setItem(row, 1, right(money(inc.amount)))
+            name_item = QTableWidgetItem(inc.name)
+            name_item.setData(Qt.ItemDataRole.UserRole, inc)
+            self._table.setItem(row, 0, name_item)
+            self._table.setItem(row, 1, right(money(inc.amount), float(inc.amount)))
             if inc.frequency == SPECIFIC_DAYS:
                 days = format_pay_days(inc.pay_days)
                 freq_text = f"days {days}" if days else SPECIFIC_DAYS
             else:
                 freq_text = inc.frequency
             self._table.setItem(row, 2, center(freq_text))
-            self._table.setItem(row, 3, right(money(monthly)))
+            self._table.setItem(row, 3, right(money(monthly), float(monthly)))
             self._table.setItem(row, 4, QTableWidgetItem(inc.notes or ""))
+        self._table.setSortingEnabled(True)
 
     def _recompute(self) -> None:
         total_income = sum(monthly_income(i) for i in self._incomes)
@@ -204,7 +210,8 @@ class SalaryView(QWidget):
         row = self._table.currentRow()
         if row < 0 or not self._table.selectedItems():
             return None
-        return self._incomes[row]
+        item = self._table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_selection_changed(self) -> None:
         enabled = bool(self._table.selectedItems())

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 from financeguru.money import ZERO
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import payments as payment_repo
-from financeguru.views._table import money
+from financeguru.views._table import center, money, right
 
 _GREEN = QColor("#2d9e2d")
 _RED = QColor("#c0392b")
@@ -38,6 +38,8 @@ class DashboardView(QWidget):
         self._bills_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._bills_table.setAlternatingRowColors(True)
         self._bills_table.verticalHeader().setVisible(False)
+        self._bills_table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._bills_table.setSortingEnabled(True)
         bills_layout.addWidget(self._bills_table)
         layout.addWidget(bills_group)
 
@@ -82,6 +84,7 @@ class DashboardView(QWidget):
                 carried.append((b, cycle_start))
 
         self._month_label.setText(today.strftime("%B %Y"))
+        self._bills_table.setSortingEnabled(False)
         self._bills_table.setRowCount(len(bills) + len(carried))
 
         total = ZERO
@@ -101,12 +104,9 @@ class DashboardView(QWidget):
                 status = f"Due on {bill.due_day}"
                 color = _ORANGE if bill.due_day == today.day else None
 
-            amount_item = QTableWidgetItem(money(bill.amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            due_item = QTableWidgetItem(str(bill.due_day))
-            due_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            status_item = QTableWidgetItem(status)
-            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            amount_item = right(money(bill.amount), float(bill.amount))
+            due_item = center(str(bill.due_day), bill.due_day)
+            status_item = center(status)
 
             if color:
                 for item in (amount_item, due_item, status_item):
@@ -125,12 +125,9 @@ class DashboardView(QWidget):
             row = len(bills) + offset
             month_abbr = date(int(cycle_start[:4]), int(cycle_start[5:7]), 1).strftime("%b")
 
-            amount_item = QTableWidgetItem(money(bill.amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            due_item = QTableWidgetItem(f"{month_abbr} {bill.due_day}")
-            due_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            status_item = QTableWidgetItem(f"Overdue ({month_abbr})")
-            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            amount_item = right(money(bill.amount), float(bill.amount))
+            due_item = center(f"{month_abbr} {bill.due_day}", bill.due_day)
+            status_item = center(f"Overdue ({month_abbr})")
 
             for item in (amount_item, due_item, status_item):
                 item.setForeground(_RED)
@@ -142,6 +139,7 @@ class DashboardView(QWidget):
 
             total += bill.amount
 
+        self._bills_table.setSortingEnabled(True)
         remaining = total - paid
         self._lbl_total.setText(f"Total Bills\n{money(total)}")
         self._lbl_paid.setText(f"Paid\n{money(paid)}")

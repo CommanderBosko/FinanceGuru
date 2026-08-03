@@ -8,7 +8,7 @@ from financeguru.repositories import payments as payment_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.payment_dialog import PaymentDialog
 from financeguru.views._month_filter import month_entries, month_prefix
-from financeguru.views._table import money
+from financeguru.views._table import center, money, right
 
 
 class PaymentsView(QWidget):
@@ -43,6 +43,8 @@ class PaymentsView(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._table.setSortingEnabled(True)
         layout.addWidget(self._table)
 
         self._btn_add.clicked.connect(self._on_add)
@@ -79,16 +81,18 @@ class PaymentsView(QWidget):
         if query:
             rows = [r for r in rows if query in self._haystack(r)]
         self._rows = rows
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._rows))
         for row, rec in enumerate(self._rows):
-            amount_item = QTableWidgetItem(money(rec['amount']))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            date_item = QTableWidgetItem(rec["paid_date"])
-            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 0, QTableWidgetItem(rec["bill_name"] or "Manual"))
+            amount_item = right(money(rec['amount']), float(rec['amount']))
+            date_item = center(rec["paid_date"])
+            bill_item = QTableWidgetItem(rec["bill_name"] or "Manual")
+            bill_item.setData(Qt.ItemDataRole.UserRole, rec)
+            self._table.setItem(row, 0, bill_item)
             self._table.setItem(row, 1, amount_item)
             self._table.setItem(row, 2, date_item)
             self._table.setItem(row, 3, QTableWidgetItem(rec["notes"] or ""))
+        self._table.setSortingEnabled(True)
 
     def _populate_month_picker(self, earliest_date: str | None) -> None:
         """Rebuild the month dropdown, preserving the selection by label if possible.
@@ -134,20 +138,26 @@ class PaymentsView(QWidget):
             payment_repo.add(dialog.payment())
             self._refresh()
 
-    def _on_edit(self) -> None:
+    def _selected_row(self) -> dict | None:
         row = self._table.currentRow()
         if row < 0 or not self._table.selectedItems():
+            return None
+        item = self._table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def _on_edit(self) -> None:
+        rec = self._selected_row()
+        if rec is None:
             return
-        dialog = PaymentDialog(self, self._rows[row])
+        dialog = PaymentDialog(self, rec)
         if dialog.exec():
             payment_repo.update(dialog.payment())
             self._refresh()
 
     def _on_delete(self) -> None:
-        row = self._table.currentRow()
-        if row < 0 or not self._table.selectedItems():
+        rec = self._selected_row()
+        if rec is None:
             return
-        rec = self._rows[row]
         answer = QMessageBox.question(
             self,
             "Delete Payment",

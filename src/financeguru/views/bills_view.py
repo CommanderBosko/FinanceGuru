@@ -12,7 +12,7 @@ from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.bill_dialog import BillDialog
 from financeguru.views.context_menu import attach_row_menu
-from financeguru.views._table import money
+from financeguru.views._table import center, money, right
 
 
 class BillsView(QWidget):
@@ -42,6 +42,8 @@ class BillsView(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._table.setSortingEnabled(True)
         layout.addWidget(self._table)
 
         self._btn_add.clicked.connect(self._on_add)
@@ -66,23 +68,26 @@ class BillsView(QWidget):
 
     def _refresh(self) -> None:
         self._bills = bill_repo.get_all()
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._bills))
         for row, bill in enumerate(self._bills):
-            amount_item = QTableWidgetItem(money(bill.amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            due_item = QTableWidgetItem(str(bill.due_day))
-            due_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 0, QTableWidgetItem(bill.name))
+            amount_item = right(money(bill.amount), float(bill.amount))
+            due_item = center(str(bill.due_day), bill.due_day)
+            name_item = QTableWidgetItem(bill.name)
+            name_item.setData(Qt.ItemDataRole.UserRole, bill)
+            self._table.setItem(row, 0, name_item)
             self._table.setItem(row, 1, amount_item)
             self._table.setItem(row, 2, due_item)
             self._table.setItem(row, 3, QTableWidgetItem(bill.recurrence.capitalize()))
             self._table.setItem(row, 4, QTableWidgetItem("Yes" if bill.is_active else "No"))
+        self._table.setSortingEnabled(True)
 
     def _selected_bill(self) -> Bill | None:
         row = self._table.currentRow()
         if row < 0 or not self._table.selectedItems():
             return None
-        return self._bills[row]
+        item = self._table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_selection_changed(self) -> None:
         enabled = bool(self._table.selectedItems())

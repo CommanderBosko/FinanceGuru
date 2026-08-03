@@ -55,6 +55,8 @@ class StockTipsView(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._table.setSortingEnabled(True)
         layout.addWidget(self._table)
 
         self._status = QLabel()
@@ -88,9 +90,11 @@ class StockTipsView(QWidget):
         self._render()
 
     def _render(self) -> None:
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._tips))
         for row, tip in enumerate(self._tips):
             self._render_row(row, tip)
+        self._table.setSortingEnabled(True)
         count = len(self._tips)
         self._status.setText(f"{count} tip{'s' if count != 1 else ''}")
 
@@ -111,20 +115,23 @@ class StockTipsView(QWidget):
         action_item = _colored(center(tip.action), tip.action)
         analyst_item = _colored(center(tip.analyst_action or _PLACEHOLDER), tip.analyst_action or "")
 
-        self._table.setItem(row, 0, center(tip.ticker))
+        ticker_item = center(tip.ticker)
+        ticker_item.setData(Qt.ItemDataRole.UserRole, tip)
+        self._table.setItem(row, 0, ticker_item)
         self._table.setItem(row, 1, action_item)
-        self._table.setItem(row, 2, right(target_str))
-        self._table.setItem(row, 3, center(stars))
+        self._table.setItem(row, 2, right(target_str, float(tip.target_price) if tip.target_price else float("-inf")))
+        self._table.setItem(row, 3, center(stars, tip.confidence))
         self._table.setItem(row, 4, analyst_item)
-        self._table.setItem(row, 5, right(analyst_target_str))
-        self._table.setItem(row, 6, center(analyst_count_str))
+        self._table.setItem(row, 5, right(analyst_target_str, float(tip.analyst_target) if tip.analyst_target else float("-inf")))
+        self._table.setItem(row, 6, center(analyst_count_str, tip.analyst_count if tip.analyst_count else float("-inf")))
         self._table.setItem(row, 7, QTableWidgetItem(tip.notes or ""))
 
     def _selected_tip(self) -> StockTip | None:
         row = self._table.currentRow()
         if row < 0 or not self._table.selectedItems():
             return None
-        return self._tips[row]
+        item = self._table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_selection_changed(self) -> None:
         enabled = bool(self._table.selectedItems())

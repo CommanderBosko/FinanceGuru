@@ -56,6 +56,8 @@ class DebtSnowballView(QWidget):
         self._debt_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._debt_table.setAlternatingRowColors(True)
         self._debt_table.setMaximumHeight(200)
+        self._debt_table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._debt_table.setSortingEnabled(True)
 
         # ── One-time extra payments ───────────────────────────────────────
         self._lump_box = QGroupBox("One-time extra payments  (e.g. tax refund, bonus)")
@@ -89,6 +91,8 @@ class DebtSnowballView(QWidget):
         self._lump_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._lump_table.setAlternatingRowColors(True)
         self._lump_table.setMaximumHeight(140)
+        self._lump_table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._lump_table.setSortingEnabled(True)
         lump_layout.addWidget(self._lump_table)
 
         self._btn_remove_lump = QPushButton("Remove Selected")
@@ -210,19 +214,24 @@ class DebtSnowballView(QWidget):
         self._render_debt_table()
 
     def _render_debt_table(self) -> None:
+        self._debt_table.setSortingEnabled(False)
         self._debt_table.setRowCount(len(self._debts))
         for row, debt in enumerate(self._debts):
-            self._debt_table.setItem(row, 0, QTableWidgetItem(debt.name))
-            self._debt_table.setItem(row, 1, right(money(debt.balance)))
-            self._debt_table.setItem(row, 2, right(f"{debt.interest_rate:.2f}%"))
-            self._debt_table.setItem(row, 3, right(money(debt.minimum_payment)))
+            name_item = QTableWidgetItem(debt.name)
+            name_item.setData(Qt.ItemDataRole.UserRole, debt)
+            self._debt_table.setItem(row, 0, name_item)
+            self._debt_table.setItem(row, 1, right(money(debt.balance), float(debt.balance)))
+            self._debt_table.setItem(row, 2, right(f"{debt.interest_rate:.2f}%", float(debt.interest_rate)))
+            self._debt_table.setItem(row, 3, right(money(debt.minimum_payment), float(debt.minimum_payment)))
             self._debt_table.setItem(row, 4, QTableWidgetItem(debt.notes or ""))
+        self._debt_table.setSortingEnabled(True)
 
     def _selected_debt(self) -> Debt | None:
         row = self._debt_table.currentRow()
         if row < 0 or not self._debt_table.selectedItems():
             return None
-        return self._debts[row]
+        item = self._debt_table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     # ── Slots ─────────────────────────────────────────────────────────────
 
@@ -248,25 +257,32 @@ class DebtSnowballView(QWidget):
 
     def _on_remove_lump(self) -> None:
         row = self._lump_table.currentRow()
-        if 0 <= row < len(self._lump_sums):
-            del self._lump_sums[row]
+        if row < 0 or not self._lump_table.selectedItems():
+            return
+        item = self._lump_table.item(row, 0)
+        entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if entry in self._lump_sums:
+            self._lump_sums.remove(entry)
             self._render_lump_table()
 
     def _on_lump_selection_changed(self) -> None:
         self._btn_remove_lump.setEnabled(bool(self._lump_table.selectedItems()))
 
     def _render_lump_table(self) -> None:
+        self._lump_table.setSortingEnabled(False)
         self._lump_table.setRowCount(len(self._lump_sums))
-        for row, (month, amount) in enumerate(self._lump_sums):
-            month_item = QTableWidgetItem(f"Month {month}")
-            month_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            date_item = QTableWidgetItem(payoff_date(month))
-            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            amount_item = QTableWidgetItem(money(amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        for row, entry in enumerate(self._lump_sums):
+            month, amount = entry
+            # Date is a strictly increasing function of month, so the month
+            # number itself is a valid sort key for the Date column too.
+            month_item = center(f"Month {month}", month)
+            month_item.setData(Qt.ItemDataRole.UserRole, entry)
+            date_item = center(payoff_date(month), month)
+            amount_item = right(money(amount), float(amount))
             self._lump_table.setItem(row, 0, month_item)
             self._lump_table.setItem(row, 1, date_item)
             self._lump_table.setItem(row, 2, amount_item)
+        self._lump_table.setSortingEnabled(True)
 
     def _on_add(self) -> None:
         dialog = DebtDialog(self)

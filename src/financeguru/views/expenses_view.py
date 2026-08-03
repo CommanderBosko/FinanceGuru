@@ -10,7 +10,7 @@ from financeguru.views.category_dialog import CategoryDialog
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.expense_dialog import ExpenseDialog
 from financeguru.views._month_filter import month_entries, month_prefix
-from financeguru.views._table import money
+from financeguru.views._table import money, right
 
 
 class ExpensesView(QWidget):
@@ -48,6 +48,8 @@ class ExpensesView(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._table.setSortingEnabled(True)
         layout.addWidget(self._table)
 
         self._btn_add.clicked.connect(self._on_add)
@@ -83,14 +85,16 @@ class ExpensesView(QWidget):
         if query:
             expenses = [e for e in expenses if query in self._haystack(e)]
         self._expenses = expenses
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._expenses))
         for row, expense in enumerate(self._expenses):
-            amount_item = QTableWidgetItem(money(expense.amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            amount_item = right(money(expense.amount), float(expense.amount))
+            amount_item.setData(Qt.ItemDataRole.UserRole, expense)
             self._table.setItem(row, 0, amount_item)
             self._table.setItem(row, 1, QTableWidgetItem(expense.spent_date))
             self._table.setItem(row, 2, QTableWidgetItem(expense.category))
             self._table.setItem(row, 3, QTableWidgetItem(expense.notes or ""))
+        self._table.setSortingEnabled(True)
 
     def _populate_month_picker(self, earliest_date: str | None) -> None:
         """Rebuild the month dropdown, preserving the selection by label if possible.
@@ -129,7 +133,8 @@ class ExpensesView(QWidget):
         row = self._table.currentRow()
         if row < 0 or not self._table.selectedItems():
             return None
-        return self._expenses[row]
+        item = self._table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_selection_changed(self) -> None:
         enabled = bool(self._table.selectedItems())

@@ -1,5 +1,6 @@
 from datetime import date
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -44,6 +45,8 @@ class GoalsView(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
+        self._table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._table.setSortingEnabled(True)
         layout.addWidget(self._table)
 
         self._btn_add.clicked.connect(self._on_add)
@@ -67,24 +70,31 @@ class GoalsView(QWidget):
     def _refresh(self) -> None:
         self._goals = goal_repo.get_all()
         paid = payment_repo.total_paid_by_bill()
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._goals))
         for row, goal in enumerate(self._goals):
             # Each Goal-bill payment chips away at what's left to fund the goal.
             contributed = paid.get(goal.bill_id, ZERO) if goal.bill_id else ZERO
             left = max(goal.price - contributed, ZERO)
+            months_left = months_remaining(goal.target_date)
+            monthly_savings = goal.monthly_savings()
 
-            self._table.setItem(row, 0, QTableWidgetItem(goal.name))
-            self._table.setItem(row, 1, right(money(goal.price)))
-            self._table.setItem(row, 2, right(money(left)))
+            name_item = QTableWidgetItem(goal.name)
+            name_item.setData(Qt.ItemDataRole.UserRole, goal)
+            self._table.setItem(row, 0, name_item)
+            self._table.setItem(row, 1, right(money(goal.price), float(goal.price)))
+            self._table.setItem(row, 2, right(money(left), float(left)))
             self._table.setItem(row, 3, center(goal.target_date))
-            self._table.setItem(row, 4, center(str(months_remaining(goal.target_date))))
-            self._table.setItem(row, 5, right(money(goal.monthly_savings())))
+            self._table.setItem(row, 4, center(str(months_left), months_left))
+            self._table.setItem(row, 5, right(money(monthly_savings), float(monthly_savings)))
+        self._table.setSortingEnabled(True)
 
     def _selected_goal(self) -> Goal | None:
         row = self._table.currentRow()
         if row < 0 or not self._table.selectedItems():
             return None
-        return self._goals[row]
+        item = self._table.item(row, 0)
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_selection_changed(self) -> None:
         enabled = bool(self._table.selectedItems())
