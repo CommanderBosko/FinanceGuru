@@ -9,6 +9,7 @@ def _row_to_goal(row) -> Goal:
         name=row["name"],
         price=to_decimal(row["price"]),
         target_date=row["target_date"],
+        start_date=row["start_date"],
         notes=row["notes"],
         bill_id=row["bill_id"],
     )
@@ -23,9 +24,9 @@ def get_all() -> list[Goal]:
 def add(goal: Goal) -> int:
     with get_connection() as conn:
         cur = conn.execute(
-            """INSERT INTO goals (name, price, target_date, notes, bill_id)
-               VALUES (?, ?, ?, ?, ?)""",
-            (goal.name, goal.price, goal.target_date, goal.notes, goal.bill_id),
+            """INSERT INTO goals (name, price, target_date, start_date, notes, bill_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (goal.name, goal.price, goal.target_date, goal.start_date, goal.notes, goal.bill_id),
         )
         return cur.lastrowid or 0
 
@@ -33,9 +34,10 @@ def add(goal: Goal) -> int:
 def update(goal: Goal) -> None:
     with get_connection() as conn:
         conn.execute(
-            """UPDATE goals SET name=?, price=?, target_date=?, notes=?, bill_id=?
+            """UPDATE goals SET name=?, price=?, target_date=?, start_date=?, notes=?, bill_id=?
                WHERE id=?""",
-            (goal.name, goal.price, goal.target_date, goal.notes, goal.bill_id, goal.id),
+            (goal.name, goal.price, goal.target_date, goal.start_date, goal.notes, goal.bill_id,
+             goal.id),
         )
 
 

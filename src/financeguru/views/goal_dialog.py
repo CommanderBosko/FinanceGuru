@@ -32,6 +32,13 @@ class GoalDialog(QDialog):
         self._price.setPrefix("$")
         form.addRow("Price:", self._price)
 
+        # When saving for this goal begins — the monthly contribution is
+        # spread over the span from here to "Afford by", not from today.
+        self._start = QDateEdit(QDate.currentDate())
+        self._start.setCalendarPopup(True)
+        self._start.setDisplayFormat("yyyy-MM-dd")
+        form.addRow("Start date:", self._start)
+
         # A goal is always funded by month's end, so the picker chooses a
         # month and the day is snapped to the last day of that month.
         self._target = QDateEdit(_end_of_month(QDate.currentDate().addMonths(6)))
@@ -61,11 +68,13 @@ class GoalDialog(QDialog):
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         self._price.valueChanged.connect(self._update_monthly)
+        self._start.dateChanged.connect(self._update_monthly)
         self._target.dateChanged.connect(self._update_monthly)
 
         if goal:
             self._name.setText(goal.name)
             self._price.setValue(float(goal.price))
+            self._start.setDate(QDate.fromString(goal.start_date, "yyyy-MM-dd"))
             self._target.setDate(QDate.fromString(goal.target_date, "yyyy-MM-dd"))
             self._notes.setPlainText(goal.notes or "")
         self._update_monthly()
@@ -80,6 +89,7 @@ class GoalDialog(QDialog):
             name=self._name.text().strip(),
             price=cents(self._price.value()),
             target_date=_end_of_month(self._target.date()).toString("yyyy-MM-dd"),
+            start_date=self._start.date().toString("yyyy-MM-dd"),
             notes=self._notes.toPlainText().strip() or None,
             bill_id=self._goal.bill_id if self._goal else None,
         )

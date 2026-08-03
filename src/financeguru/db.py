@@ -4,7 +4,7 @@ import re
 import shutil
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Generator
@@ -140,6 +140,20 @@ def _migrate_income_to_pay_date(conn) -> None:
     conn.execute("DELETE FROM incomes")
 
 
+def _migrate_goal_start_dates(conn) -> None:
+    """Backfill start_date for goals created before the column existed.
+
+    Existing goals have no real "when did saving start" date, so the
+    migration date becomes the start — monthly_savings then treats it as the
+    beginning of the funding plan rather than dividing by zero on an empty
+    string. Guarded on start_date='' so it's a no-op once applied.
+    """
+    conn.execute(
+        "UPDATE goals SET start_date = ? WHERE start_date = ''",
+        (date.today().isoformat(),),
+    )
+
+
 def init_db() -> None:
     DB_DIR.mkdir(parents=True, exist_ok=True)
     # Restrict the data directory to the owner; this also covers the -wal/-journal
@@ -202,6 +216,7 @@ def init_db() -> None:
                 name        TEXT    NOT NULL,
                 price       REAL    NOT NULL,
                 target_date TEXT    NOT NULL,
+                start_date  TEXT    NOT NULL DEFAULT '',
                 bill_id     INTEGER REFERENCES bills(id) ON DELETE SET NULL,
                 notes       TEXT
             );
@@ -262,6 +277,8 @@ def init_db() -> None:
         _ensure_column(conn, "bills", "due_year", "due_year INTEGER")
         _ensure_column(conn, "stocks", "last_price", "last_price REAL")
         _ensure_column(conn, "stocks", "last_price_date", "last_price_date TEXT")
+        _ensure_column(conn, "goals", "start_date", "start_date TEXT NOT NULL DEFAULT ''")
+        _migrate_goal_start_dates(conn)
 
         # Wipe pre-pay_date income rows (see _migrate_income_to_pay_date), then
         # add the column and drop whatever legacy shape the table was in.

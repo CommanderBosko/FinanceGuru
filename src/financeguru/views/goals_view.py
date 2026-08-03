@@ -17,7 +17,7 @@ from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.goal_dialog import GoalDialog
 
-_COLS = ["Goal", "Price", "Amount Left", "Afford By", "Months Left", "Save / Month"]
+_COLS = ["Goal", "Price", "Amount Left", "Start Date", "Afford By", "Months Left", "Save / Month"]
 
 
 class GoalsView(QWidget):
@@ -84,9 +84,10 @@ class GoalsView(QWidget):
             self._table.setItem(row, 0, name_item)
             self._table.setItem(row, 1, right(money(goal.price), float(goal.price)))
             self._table.setItem(row, 2, right(money(left), float(left)))
-            self._table.setItem(row, 3, center(goal.target_date))
-            self._table.setItem(row, 4, center(str(months_left), months_left))
-            self._table.setItem(row, 5, right(money(monthly_savings), float(monthly_savings)))
+            self._table.setItem(row, 3, center(goal.start_date))
+            self._table.setItem(row, 4, center(goal.target_date))
+            self._table.setItem(row, 5, center(str(months_left), months_left))
+            self._table.setItem(row, 6, right(money(monthly_savings), float(monthly_savings)))
         self._table.setSortingEnabled(True)
 
     def _selected_goal(self) -> Goal | None:

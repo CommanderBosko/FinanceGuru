@@ -188,7 +188,7 @@ def test_goals_months_left_sorts_numerically_and_edit_targets_correct_row(qapp, 
     goal_repo.add(Goal(name="Far", price=Decimal("100"),
                         target_date=date(far_year, today.month, 28).isoformat()))
     view = GoalsView()
-    _sort(view._table, 4)  # Months Left
+    _sort(view._table, 5)  # Months Left
     assert _col_texts(view._table, 0) == ["Soon", "Far"]
     view._table.selectRow(0)
     assert view._selected_goal().name == "Soon"

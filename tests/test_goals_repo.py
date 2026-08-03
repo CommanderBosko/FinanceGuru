@@ -7,7 +7,8 @@ from financeguru.repositories import bills, goals
 
 def test_add_and_round_trip():
     new_id = goals.add(Goal(name="New laptop", price=Decimal("1500.00"),
-                            target_date="2026-12-31", notes="work machine"))
+                            target_date="2026-12-31", start_date="2026-06-01",
+                            notes="work machine"))
     assert new_id
 
     rows = goals.get_all()
@@ -17,6 +18,7 @@ def test_add_and_round_trip():
     assert g.name == "New laptop"
     assert g.price == Decimal("1500.00")
     assert g.target_date == "2026-12-31"
+    assert g.start_date == "2026-06-01"
     assert g.bill_id is None
     assert isinstance(g.price, Decimal)
 
