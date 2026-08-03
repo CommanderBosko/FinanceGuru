@@ -2,17 +2,72 @@ from datetime import date
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
+    QComboBox, QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from financeguru.models.bill import Bill
+from financeguru.models.goal import Goal
 from financeguru.models.payment import Payment
 from financeguru.repositories import bills as bill_repo
+from financeguru.repositories import goals as goal_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.bill_dialog import BillDialog
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views._table import center, money, right
+
+MonthKey = tuple[int, int] | None
+
+
+def _month_entries(bills: list[Bill], goals: list[Goal]) -> list[tuple[str, MonthKey]]:
+    """(label, (year, month)) pairs for the Bills tab's month picker.
+
+    Unlike Payments/Income's picker (built from real dated log entries),
+    Bills are recurring templates with no single date, so the window is
+    assembled from whichever months are actually "interesting": the current
+    month, every one-time bill's exact due month, this year's and next
+    year's occurrence of every yearly bill's due month, and every goal's
+    start/target month (the span its linked Goal bill can appear or
+    disappear across). Always includes the current month so the picker
+    never starts empty on a fresh database.
+    """
+    today = date.today()
+    months = {(today.year, today.month)}
+    for bill in bills:
+        if bill.recurrence == "one-time" and bill.due_year is not None and bill.due_month is not None:
+            months.add((bill.due_year, bill.due_month))
+        elif bill.recurrence == "yearly" and bill.due_month is not None:
+            months.add((today.year, bill.due_month))
+            months.add((today.year + 1, bill.due_month))
+    for goal in goals:
+        for iso in (goal.start_date, goal.target_date):
+            d = date.fromisoformat(iso)
+            months.add((d.year, d.month))
+    entries: list[tuple[str, MonthKey]] = [("All", None)]
+    entries += [(date(y, m, 1).strftime("%B %Y"), (y, m)) for y, m in sorted(months)]
+    return entries
+
+
+def _visible_in_month(bill: Bill, key: MonthKey, goal_starts: dict[int, str]) -> bool:
+    """Whether `bill` belongs on the Bills tab for the selected month.
+
+    `key` of None is "All" — unfiltered, matching the tab's historical
+    behavior. Otherwise this defers to `Bill.is_due_in` for ordinary
+    recurrence, plus a goal-specific gate: a goal's linked bill shouldn't
+    appear before the month its Goal's start_date falls in, something
+    `is_due_in` can't know since start_date lives on the Goal, not the Bill.
+    """
+    if key is None:
+        return True
+    year, month = key
+    if not bill.is_due_in(year, month):
+        return False
+    start = goal_starts.get(bill.id) if bill.id is not None else None
+    if start:
+        start_date = date.fromisoformat(start)
+        if (year, month) < (start_date.year, start_date.month):
+            return False
+    return True
 
 
 class BillsView(QWidget):
@@ -29,10 +84,12 @@ class BillsView(QWidget):
         self._btn_pay = QPushButton("Mark Paid")
         for btn in (self._btn_edit, self._btn_delete, self._btn_pay):
             btn.setEnabled(False)
+        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
         btn_bar.addWidget(self._btn_pay)
+        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
         layout.addLayout(btn_bar)
 
@@ -50,6 +107,7 @@ class BillsView(QWidget):
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
         self._btn_pay.clicked.connect(self._on_pay)
+        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
 
@@ -67,7 +125,31 @@ class BillsView(QWidget):
         self._refresh()
 
     def _refresh(self) -> None:
-        self._bills = bill_repo.get_all()
+        all_bills = bill_repo.get_all()
+        goals = goal_repo.get_all()
+        goal_starts = {g.bill_id: g.start_date for g in goals if g.bill_id is not None}
+
+        previous = self._month_picker.currentText()
+        entries = _month_entries(all_bills, goals)
+        labels = [label for label, _ in entries]
+        self._month_picker.blockSignals(True)
+        self._month_picker.clear()
+        for label, key in entries:
+            self._month_picker.addItem(label, key)
+        if previous in labels:
+            self._month_picker.setCurrentIndex(labels.index(previous))
+        else:
+            # First population, or the prior selection vanished — default to
+            # the current month rather than "All".
+            current_label = date.today().strftime("%B %Y")
+            self._month_picker.setCurrentIndex(
+                labels.index(current_label) if current_label in labels else 0
+            )
+        self._month_picker.blockSignals(False)
+
+        key = self._month_picker.currentData()
+        self._bills = [b for b in all_bills if _visible_in_month(b, key, goal_starts)]
+
         self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._bills))
         for row, bill in enumerate(self._bills):
