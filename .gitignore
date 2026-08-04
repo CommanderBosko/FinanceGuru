@@ -23,3 +23,8 @@ packaging/pyinstaller/build-assets/
 *.db
 *.sqlite
 *.sqlite3
+
+# Claude Code: personal, machine-specific permission overrides.
+# .claude/settings.json and .claude/skills/ ARE tracked (shared project
+# conventions); this file is per-contributor and should never be shared.
+.claude/settings.local.json
