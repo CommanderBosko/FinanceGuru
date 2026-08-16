@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from financeguru import db
 from financeguru.views.bills_view import BillsView
 from financeguru.views.charts_view import ChartsView
+from financeguru.views.currency_converter_view import CurrencyConverterView
 from financeguru.views.dashboard_view import DashboardView
 from financeguru.views.debt_snowball_view import DebtSnowballView
 from financeguru.views.expenses_view import ExpensesView
@@ -61,6 +62,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(DebtSnowballView(), "Debt Snowball")
         self._tabs.addTab(GoalsView(), "Goals")
         self._tabs.addTab(ChartsView(), "Charts")
+        self._tabs.addTab(CurrencyConverterView(), "Currency Converter")
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self._tabs)

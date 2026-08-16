@@ -269,6 +269,31 @@ def init_db() -> None:
                 position     INTEGER NOT NULL DEFAULT 0,
                 is_protected INTEGER NOT NULL DEFAULT 0
             );
+
+            -- Cached exchange-rate snapshot for the Currency Converter tab, one
+            -- row per pivot base currency actually fetched (currently just
+            -- currencies.PIVOT_BASE). rates_json holds the whole table fetched
+            -- from Frankfurter as {code: rate string}, so converting between any
+            -- two offered currencies is a cross-rate division, not a re-fetch.
+            -- Deliberately NOT in _CORE_TABLES: see the comment on `snapshots`
+            -- above — it's a new table added after existing backups were made,
+            -- and requiring it would reject those older, valid backups.
+            CREATE TABLE IF NOT EXISTS currency_rates (
+                base       TEXT PRIMARY KEY,
+                rates_json TEXT NOT NULL,
+                fetched_at TEXT NOT NULL
+            );
+
+            -- Generic key/value settings store. First user is the Currency
+            -- Converter tab (remembering the last-used From/To codes and
+            -- amount), but the table itself is not currency-specific — reuse it
+            -- for any future "remember this across restarts" need rather than
+            -- adding another single-purpose table. Also NOT in _CORE_TABLES,
+            -- same reasoning as currency_rates above.
+            CREATE TABLE IF NOT EXISTS preferences (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
 
         # Migrations for databases created before a column existed.

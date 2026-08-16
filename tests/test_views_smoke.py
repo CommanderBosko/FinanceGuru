@@ -10,7 +10,9 @@ lock in that contract.
 
 Constructing views is network-safe: the Stocks / Stock Tips fetcher QThreads
 only start from their explicit "Refresh Prices" button handlers, which nothing
-here triggers.
+here triggers. The Currency Converter tab is different -- it kicks off a live
+rates fetch on construction -- so the `_no_currency_rates_fetch` fixture below
+patches its QThread's start() to a no-op for every test in this module.
 """
 
 from datetime import date
@@ -34,8 +36,10 @@ from financeguru.repositories import incomes as income_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.repositories import stock_tips as tip_repo
 from financeguru.repositories import stocks as stock_repo
+from financeguru.rates import RatesFetcher
 from financeguru.views.bills_view import BillsView
 from financeguru.views.charts_view import ChartsView
+from financeguru.views.currency_converter_view import CurrencyConverterView
 from financeguru.views.dashboard_view import DashboardView
 from financeguru.views.debt_snowball_view import DebtSnowballView
 from financeguru.views.expenses_view import ExpensesView
@@ -57,6 +61,7 @@ EXPECTED_TABS = [
     "Debt Snowball",
     "Goals",
     "Charts",
+    "Currency Converter",
 ]
 
 # Every tab widget class, importable directly so a failure points at the view
@@ -72,7 +77,16 @@ VIEW_CLASSES = [
     DebtSnowballView,
     GoalsView,
     ChartsView,
+    CurrencyConverterView,
 ]
+
+
+@pytest.fixture(autouse=True)
+def _no_currency_rates_fetch(monkeypatch):
+    # Unlike Stocks/Stock Tips, the Currency Converter tab fetches on
+    # construction rather than from a button, so it needs an explicit patch
+    # to keep these tests hermetic and network-free. See module docstring.
+    monkeypatch.setattr(RatesFetcher, "start", lambda self: None)
 
 
 def _dispose(widget, qapp) -> None:
