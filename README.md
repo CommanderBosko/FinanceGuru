@@ -1,17 +1,17 @@
 # Finance Guru
 
-A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments and one-off expenses, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, visualizes an income budget with savings projections, plans savings goals with automatic monthly bill creation, and charts where the money goes month to month. Database backup, restore, and CSV export are built into the File menu. Built with PySide6 and SQLite, packaged as a Nix flake.
+A personal finance desktop application for two users (bosko and natty). Tracks recurring bills, logs payments and one-off expenses, monitors a stock portfolio with live prices, provides analyst-backed stock tips, calculates debt payoff strategies, visualizes an income budget with savings projections, plans savings goals with automatic monthly bill creation, converts between world currencies at live rates, and charts where the money goes month to month. Database backup, restore, and CSV export are built into the File menu. Built with PySide6 and SQLite, packaged as a Nix flake.
 
 ## Current Status
 
-Active development — ten tabs fully implemented (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals, Charts). All features are functional and persisted to SQLite. Every table across the app now supports **click-to-sort headers**, Payments/Expenses/Income share a **month/year dropdown filter**, Income records each paycheck as a dated entry rather than a recurring day-of-month, and Goals track a start date so the required monthly contribution is fixed at creation time. The Charts tab includes a **net-worth trend chart** drawn from the daily snapshots the app has been recording since 2026-07-02, rendered gap-honestly (no interpolation across days the app didn't run). The app records that snapshot and takes an automatic rotating backup at every launch. As of 2026-07-26 the app also ships beyond NixOS — a **Flatpak** build and native **Windows/macOS** builds (via PyInstaller) are produced on every push through CI (see Installation below); nothing beyond GitHub's hosted runners has verified the Windows/macOS/Flatpak builds yet, so treat those as CI-verified, not hardware-verified. The flake's outputs are generated for both `x86_64-linux` and `aarch64-linux`. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 201-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, sortable-table row-identity behavior, offscreen smoke tests of every view, behavioral tests of the month-filter views, and OS-path parity for the cross-platform builds. Five comprehensive audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26, whole-codebase 2026-08-02) have been completed with all findings addressed.
+Active development — eleven tabs fully implemented, ordered alphabetically with Dashboard pinned first (Dashboard, Bills, Charts, Currency Converter, Debt Snowball, Expenses, Goals, Income, Payments, Stock Tips, Stocks). All features are functional and persisted to SQLite. Every table across the app supports **click-to-sort headers**, Payments/Expenses/Income share a **month/year dropdown filter**, and Bills has its own month/year filter that also hides a Goal's linked bill until its start date. Income records each paycheck as a dated entry rather than a recurring day-of-month, and Goals track a start date so the required monthly contribution is fixed at creation time. The **Currency Converter** tab (new 2026-08-16) converts between ~31 major world currencies at live rates from the free Frankfurter API, cached locally with an offline fallback. The Charts tab includes a **net-worth trend chart** drawn from the daily snapshots the app has been recording since 2026-07-02, rendered gap-honestly (no interpolation across days the app didn't run). The app records that snapshot and takes an automatic rotating backup at every launch. As of 2026-07-26 the app also ships beyond NixOS — a **Flatpak** build and native **Windows/macOS** builds (via PyInstaller) are produced on every push through CI (see Installation below); nothing beyond GitHub's hosted runners has verified the Windows/macOS/Flatpak builds yet, so treat those as CI-verified, not hardware-verified. The flake's outputs are generated for both `x86_64-linux` and `aarch64-linux`. The app is installed as a NixOS system package on the `gaming` and `natalie-laptop` hosts and launches from the system app menu with a custom icon — as of 2026-07-07 the NixOS package build itself sets up its Qt runtime environment correctly (`dontWrapQtApps` + an explicit `postFixup` wrap), fixing a startup crash that had been present in every packaged build. A 240-test pytest suite covers the repositories, models, the `db`/`snowball`/`budget`/`prices`/`rates`/`reporting`/`categories`/`snapshots` modules, the dashboard's overdue-bill rules, sortable-table row-identity behavior, offscreen smoke tests of every view, behavioral tests of the filter/gating views, and OS-path parity for the cross-platform builds. Seven comprehensive audit passes (two security 2026-06-07, full 2026-06-17, whole-codebase 2026-06-26, whole-codebase 2026-08-02, diff-scoped 2026-08-03, diff-scoped 2026-08-16) have been completed with all findings addressed.
 
 ## Features
 
 - **Dashboard** — Bills actually due this month with Paid / Overdue / Upcoming status badges and a monthly cost summary. Monthly bills appear every month, yearly bills only in their due month, and one-time bills only in their exact month and year. Unpaid one-time and yearly bills from past months are carried over as "Overdue (Month)" rows until paid — they never silently vanish — and count toward the Total/Remaining summary. Auto-refreshes on tab focus.
 - **Net-worth snapshots** — A daily snapshot (stock value, debt total, goal savings, net worth) is recorded automatically at launch and updated after a full price refresh; the Charts tab's Net Worth view draws this history. One row per day; past rows are immutable.
 - **Automatic backups** — A rotating daily backup is written at every launch (before any schema migration runs, so a bad migration is always recoverable) to a `backups/` folder alongside the database (see Configuration below for the OS-specific location), keeping the newest 14. Manual pre-restore safety copies are never pruned.
-- **Bills** — Full CRUD for recurring bills (name, amount, due day, recurrence, category). Recurrence is schedule-aware: `monthly` bills recur every month, `yearly` bills carry a due month, and `one-time` bills carry a full due month + year (the dialog reveals the right pickers per recurrence). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments.
+- **Bills** — Full CRUD for recurring bills (name, amount, due day, recurrence, category). Recurrence is schedule-aware: `monthly` bills recur every month, `yearly` bills carry a due month, and `one-time` bills carry a full due month + year (the dialog reveals the right pickers per recurrence). Mark Paid creates a linked payment record. Deleting a bill cascades to its payments. A month/year dropdown (defaulting to the current month) filters the table, and a Goal's auto-created bill stays hidden until its start date is reached.
 - **Payments** — Full payment history log sorted newest-first. Payments optionally reference a bill. Add, Edit (button or double-click), and Delete supported. A month/year dropdown (defaulting to the current month, with an "All" entry for full history) scopes the table. A live search bar filters by bill name, amount, date, or notes.
 - **Expenses** — Log one-off, non-recurring expenses (amount, date, category, notes) with full Add/Edit/Delete CRUD, double-click to edit, and a right-click context menu. A month/year dropdown (defaulting to the current month, "All" for full history) scopes the table, and a live search bar filters by amount, date, category, or notes — the same filter pair as the Payments tab. Categories are **user-managed**: a "Manage Categories…" button opens a dialog to add, rename, and delete categories (seeded with Housing, Utilities, Groceries, Restaurants, Transport, Health, Entertainment, Pets, Savings, Other). Savings and Other are protected (the reporting layer depends on them) and can't be renamed or deleted.
 - **Charts** — Two sub-tabs. *Spending* visualizes the trailing 12 months: a stacked bar chart breaks each month's spending into categories, and a pie chart shows a single month's breakdown (defaults to the current month, with a picker for any of the last 12). Spending = all payments + all expenses; goal contributions (payments against a goal-linked bill, identified by the goals foreign key) are counted as "Savings" and excluded from the monthly spending total. *Net Worth* draws the daily snapshot history as a date-axis line chart — contiguous runs of snapshots (≤7 days apart) connect into lines, every snapshot is dotted, and longer gaps render as visible breaks rather than interpolated lines. Auto-refreshes on tab focus.
@@ -20,6 +20,7 @@ Active development — ten tabs fully implemented (Dashboard, Bills, Payments, E
 - **Debt Snowball** — Track debts (balance, APR, minimum payment). A pure-Python month-by-month simulator computes both Snowball and Avalanche payoff strategies with rolling extra payments. Side-by-side summary shows total interest paid and time saved per strategy. A per-debt monthly payment schedule table shows exactly how each month's payment is allocated. One-time lump-sum extra payments (windfalls, bonuses, tax refunds) can be injected at a specific month and cascade across debts.
 - **Income** — Log each paycheck as a dated entry (amount + calendar date), just like Payments/Expenses. A month/year dropdown scopes both the table and the Monthly Budget summary, defaulting to the current month with an "All" entry for lifetime totals. The Monthly Budget summary subtracts monthly bills (shown as N/A in "All" scope, since it's a recurring figure with no honest all-time equivalent) and the selected scope's logged expenses to show the "Extra Spending Money" actually left over. A savings-rate slider splits that remainder into a proportional save-vs-spend bar with monthly and annual projections.
 - **Goals** — Enter a savings goal (name, total price, start date, target month). The app computes the required monthly contribution (`price / months_remaining` from the start date, rounded up to the cent — fixed at creation/edit time rather than drifting as time passes) and auto-creates a recurring "Goal" bill so the commitment appears in the Bills and Dashboard tabs. Editing a goal updates its linked bill; deleting a goal (with confirmation) deletes its linked bill. An "Amount Left" column tracks how much of the goal price remains unfunded as payments accumulate. The "Afford By" date always snaps to the last day of the chosen month.
+- **Currency Converter** — Convert between ~31 major world currencies, each listed as "Name (Country)" (e.g. "Pound (England)"). Enter an amount, pick From/To currencies (or swap them), and see the converted result instantly. Rates come from the free, keyless Frankfurter API and are cached locally with a `fetched_at` date; offline, the tab falls back to the last-cached rates and says so ("Rates as of `<date>`"). Rates refresh automatically once per day and on demand via a "Refresh Rates" button. The last-used From/To currencies and amount are remembered across restarts.
 - **Sortable tables** — Every data table (Dashboard, Bills, Payments, Expenses, Income, Stocks, Stock Tips, Goals, and Debt Snowball's debts/lump-sum tables) supports click-to-sort column headers with ascending/descending toggle; money, numeric, and non-ISO-date columns sort by their real value, not display text. Debt Snowball's payoff-plan comparison and monthly amortization schedule stay in computed, time order.
 - **Right-click context menus** — The data tables (Bills, Payments, Expenses, Income, Stocks, Stock Tips, Debt Snowball, Goals) support right-click context menus mirroring their toolbar buttons. Right-clicking selects the row under the cursor first; selection-dependent actions are disabled when nothing is selected.
 - **File menu** — Backup Database (WAL-safe SQLite online backup API, `chmod 600` before write, date-stamped default filename), Restore Database (validates source carries all FinanceGuru core tables, writes a timestamped `.bak` safety copy, clears stale WAL sidecars, runs schema migrations, refreshes all tabs), Export to CSV (table identifiers validated, all cells — headers included — sanitized against formula injection, each file created `0600` so it's never briefly world-readable), and Quit (Ctrl+Q).
@@ -113,6 +114,8 @@ src/financeguru/
 ├── budget.py                     # Shared frequency-to-monthly normalization (all pay frequencies, Decimal)
 ├── reporting.py                  # Spending aggregation for Charts: monthly_spending() + category_breakdown() (Decimal)
 ├── categories.py                 # Category seed list + PROTECTED_CATEGORIES + GOAL_NOTE/SAVINGS_CATEGORY constants
+├── currencies.py                 # Currency Converter's ~31-currency list ("Name (Country)") + pivot-base constant
+├── rates.py                      # RatesFetcher QThread — background Frankfurter API lookups, bounded-then-unbounded teardown
 ├── models/
 │   ├── bill.py                   # Bill dataclass (with category)
 │   ├── payment.py                # Payment dataclass
@@ -123,7 +126,8 @@ src/financeguru/
 │   ├── income.py                 # Income dataclass (dated paycheck: amount + pay_date)
 │   ├── goal.py                   # Goal dataclass + months_remaining() + monthly_savings()
 │   ├── category.py               # Category dataclass (name, position, is_protected)
-│   └── snapshot.py               # Snapshot dataclass (daily net-worth record)
+│   ├── snapshot.py               # Snapshot dataclass (daily net-worth record)
+│   └── currency_rates.py         # CurrencyRates dataclass (base, rates, fetched_at)
 ├── repositories/
 │   ├── bills.py                  # DB access for bills
 │   ├── payments.py               # DB access for payments (includes total_paid_by_bill())
@@ -134,20 +138,23 @@ src/financeguru/
 │   ├── incomes.py                # DB access for incomes
 │   ├── goals.py                  # DB access for goals
 │   ├── categories.py             # DB access for user-managed categories (get_all/names/add/rename/delete)
-│   └── snapshots.py              # Daily net-worth snapshot capture (launch + post-price-refresh upsert)
+│   ├── snapshots.py              # Daily net-worth snapshot capture (launch + post-price-refresh upsert)
+│   ├── currency_rates.py         # DB cache for the fetched Frankfurter rate table (singleton per base currency)
+│   └── preferences.py            # Generic key/value settings table (get/set/set_many) — first used by Currency Converter
 └── views/
     ├── main_window.py            # QMainWindow with QTabWidget + File menu; refreshes all tabs on focus/restore
     ├── context_menu.py           # Reusable attach_row_menu helper for right-click table menus
     ├── dashboard_view.py         # Monthly bill status summary
     ├── bill_dialog.py            # Add/Edit bill form
-    ├── bills_view.py             # Bills tab — table + Add/Edit/Delete/Mark Paid
+    ├── bills_view.py             # Bills tab — table + Add/Edit/Delete/Mark Paid + month/year filter + goal-bill gating
     ├── payment_dialog.py         # Log payment form
     ├── payments_view.py          # Payments tab — history + Add/Edit/Delete + month filter + search
     ├── expense_dialog.py         # Add/Edit one-off expense form
     ├── expenses_view.py          # Expenses tab — table + Add/Edit/Delete + Manage Categories
     ├── category_dialog.py        # Manage Categories dialog (add/rename/delete; protects Savings/Other)
-    ├── _month_filter.py          # Shared month/year dropdown builder + date-prefix matcher (Payments/Expenses/Income)
+    ├── _month_filter.py          # Shared month/year dropdown builder + date-prefix matcher (Payments/Expenses/Income/Bills)
     ├── charts_view.py            # Charts tab — Spending (stacked bars + pie) and Net Worth (trend line) sub-tabs (QtCharts)
+    ├── currency_converter_view.py # Currency Converter tab — amount/from/to/swap, live rates + cached fallback
     ├── _table.py                 # Shared table-cell builders (right/center/SortableItem) + the money() display formatter
     ├── stock_dialog.py           # Add/Edit stock holding form
     ├── stocks_view.py            # Stocks tab — holdings table + live prices
@@ -179,6 +186,18 @@ packaging/
 ```
 
 ## Recent Changes
+
+**2026-08-16 — Currency Converter Tab + Tab Reorder**
+
+- **New Currency Converter tab** — convert between ~31 major world currencies ("Name (Country)" format), with live rates from the free Frankfurter API, a local cache with an offline fallback, and last-used From/To/amount remembered across restarts.
+- **Tabs reordered alphabetically, Dashboard pinned first** — Dashboard, Bills, Charts, Currency Converter, Debt Snowball, Expenses, Goals, Income, Payments, Stock Tips, Stocks.
+- An `/audit` pass fixed 9 issues, including a QThread-teardown crash risk on quit and `refresh()` not correctly reloading state after a DB restore. Suite 210 → 240 tests, all green.
+
+**2026-08-03 — Bills Month/Year Filter, Windows CI Fix, qt-visual-verify Skill**
+
+- **Bills tab gained a month/year filter** (matching Payments/Income), and a Goal's auto-created bill now stays hidden until its start date is reached, fixing a bug where future-dated goals showed up on Bills immediately.
+- **Fixed a Windows-only crash** in CSV export (`os.O_NOFOLLOW` doesn't exist on that platform) — caught by real Windows CI, not local testing.
+- Internal: added the `qt-visual-verify` project skill (screenshot-based visual verification) and committed the repo's own `.gitignore` rule for `.claude/settings.local.json`. Suite 201 → 210 tests, all green.
 
 **2026-08-02 — Month Filters, Sortable Headers, Income Redesign, Goals Start Date, Audit Fixes**
 

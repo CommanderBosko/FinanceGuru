@@ -4,6 +4,57 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-08-16 — Currency Converter Tab + Tab Reorder
+
+**Focus**: Add a Currency Converter tab (two "Name (Country)" dropdowns, live rates), then reorder tabs alphabetically with Dashboard pinned first.
+
+### What changed (and why)
+- **New Currency Converter tab** — Amount field, From/To dropdowns over ~31 major currencies ("Pound (England)" style), a swap button, and a live result. Rates come from the free/keyless Frankfurter API, cached in a new `currency_rates` table with an offline fallback, and a new generic `preferences` key/value table remembers the last-used From/To/amount across restarts (first use of that mechanism, written reusable).
+- **Real bug found only by hitting the live API**: Frankfurter's documented `api.frankfurter.app` host now redirects to `api.frankfurter.dev/v1`, and Cloudflare 403s the default Python `urllib` User-Agent as a bot signature. Fixed by calling the new host with a real User-Agent.
+- **Full `/audit` pass** (security-review + code-review + project risk checklist, required by `new-feature`'s checklist for money math + external data) found and fixed 9 issues: a QThread-teardown gap missing `prices.py`'s unbounded-wait fallback (real crash-on-quit risk on a hung DNS lookup); `refresh()` wrongly triggering a network fetch and not reloading preferences after a DB restore; zero-decimal-currency display (JPY/KRW/ISK); a cache-write failure freezing the UI mid-fetch; a stale saved currency falling back to the wrong default; a double-fire swap; and preferences writes opening 3 DB connections instead of 1.
+- **Tab reorder** — alphabetical with Dashboard pinned first (Dashboard, Bills, Charts, Currency Converter, Debt Snowball, Expenses, Goals, Income, Payments, Stock Tips, Stocks). Caught and fixed one test (`test_views_smoke.py`'s `EXPECTED_TABS`) that pinned the old order.
+
+### Decisions
+- `refresh()` kept strictly DB-local (no network) to match the Stocks/Stock Tips contract — only initial construction and the explicit "Refresh Rates" button trigger a live fetch.
+- `currency_rates`/`preferences` both excluded from `_CORE_TABLES` so older backups without either table still restore and gain them on the next `init_db()`.
+- The tab reorder skipped the `/interview` ceremony as a simple, unambiguous request, per that skill's own exception for well-scoped trivial changes.
+
+### Issues / surprises
+- The Frankfurter host redirect + Cloudflare User-Agent block (above) — not documented anywhere, only found by actually driving the live API during `qt-smoke`/`qt-visual-verify`.
+
+### Next session
+- No app-facing next steps opened this session — see `project-state.md`'s Next Steps (natalie-laptop rebuild, Charts GUI eyeball, non-Linux hardware verification, multi-user partitioning) for what's actually open.
+
+**Commits**: `0cb13c4..3968f5e` (2 commits)
+
+---
+
+## Session: 2026-08-03 — Bills Month/Year Filter + Goal Gating, Windows CI Fix, qt-visual-verify Skill
+
+**Focus**: User asked how the Goals `start_date` feature worked, noticed a future-dated Goal's bill showing on the Bills tab immediately, and asked whether that was a `start_date` bug or a bigger gap.
+
+### What changed (and why)
+- **Diagnosed as the bigger problem**: `BillsView` listed every bill unconditionally with no month concept at all (unlike Payments/Income, which already had month/year dropdowns), and `GoalsView` never passed `start_date` to the linked bill it auto-creates. Fixing only the second half would have had nowhere to take effect.
+- **Bills gained a month/year `QComboBox`** (via `/interview` to pin the exact semantics first) — defaults to the current month, built from "interesting" months (today, one-time due months, yearly this/next-year due months, goal start/target months), filtering via `Bill.is_due_in`. A goal-specific gate lives in `BillsView` itself (cross-references `repositories/goals.py`) to hide a goal's bill until its `start_date` month — no schema change.
+- **Follow-up `/audit` pass** found no must-fix issues, 3 minor ones: documented the ascending-vs-Payments/Income's-descending month-picker sort choice, renamed an ambiguous `start` variable to `start_iso`, added a test for the previously-selected-month-vanishing fallback case.
+- **Real Windows CI (not local) caught `os.O_NOFOLLOW`** not existing on that platform — crashed `export_all_csv()`'s symlink-race guard with `AttributeError`. Fixed with a `getattr(os, "O_NOFOLLOW", 0)` fallback.
+- **New `qt-visual-verify` project skill** — screenshot-and-actually-look verification, distinct from `qt-smoke`'s functional-only checks; built via `/skill-suggestion` after the same hand-rolled pattern turned up in 9 of 11 recent sessions.
+- **`.claude/settings.local.json` added to the repo's own `.gitignore`** — previously excluded only via this machine's global git config; now any contributor gets the same exclusion without it.
+
+### Decisions
+- `start_date` kept off the `Bill` model entirely, per the user's explicit interview answers — the goal-bill gate lives in `BillsView` only.
+- Bills' month picker sorts oldest-first (unlike Payments/Income's newest-first) — accepted as-is, since Bills mixes past *and* future months.
+
+### Issues / surprises
+- This session also touched the separate NixOS repo (a `skill-upgrade` gotcha fix to `session-closer`'s transcript-cutoff detector, committed there as `2ed3644`) — unrelated to FinanceGuru's own history, noted here so it isn't mistaken for missing work.
+
+### Next session
+- No app-facing next steps opened this session — see `project-state.md`'s Next Steps for what's actually open.
+
+**Commits**: `1b96965..6fa44d3` (5 commits)
+
+---
+
 ## Session: 2026-08-02 — Month Filters, Sortable Headers, Income Redesign x2, Goals Start Date, Audit Fixes
 
 **Focus**: A day of feature requests handled back-to-back (month/year filters, sortable tables, Income model changes, Goals start date), closed out with a full `/audit` pass.
@@ -78,60 +129,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - natalie-laptop still needs `nix flake update financeguru` + rebuild to pick up this and everything since 2026-07-07.
 
 **Commits**: `25c9894..fe7d823` (5 commits + merge)
-
----
-
-## Session: 2026-07-23 — Two New Skills + Skill-Audit Sweep
-
-**Focus**: User asked for `/skill-suggestion` and `/skill-upgrade` ideas mined from session logs since their last run, then to build and ship the resulting candidates, then to `/skill-audit` the whole project-local skill set.
-
-### What changed (and why)
-- **Two new project-local skills shipped via `/ship-skill`** (draft → real smoke test → commit → push): `codebase-improvement-sweep` packages the "find independent improvements, implement/verify/commit each" loop that had already fired twice ad-hoc (most recently the 2026-07-16 session); `mechanical-sweep-refactor` packages the grep→disposable-script→diff-spot-check→verify loop for bulk mechanical changes.
-- **Both smoke tests were real work, not toy scenarios**: `codebase-improvement-sweep`'s smoke test added a genuinely missing test (`test_debt_that_never_amortizes_is_capped`, closing a gap where the snowball simulator's 600-month `capped=True` path had no coverage); `mechanical-sweep-refactor`'s smoke test swept `typing.Optional[X]` → `X | None` across all 21 occurrences in `models/`, catching and fixing a real bug in its own first-draft rewrite script (a dead-import check that read its own already-substituted text and never dropped the now-unused `Optional` import) along the way.
-- **`skill-audit` swept all 7 project-local skills** (`audit`, `codebase-improvement-sweep`, `db-migration`, `mechanical-sweep-refactor`, `new-feature`, `qt-nix-wrapper-diagnose`, `qt-smoke`) via 4 parallel fork agents on disjoint groups. Found and fixed: one real doc/code drift (`new-feature` still documented the pre-sweep `id: Optional[int] = None` convention), 5 skills missing a documented `## Arguments` section, and 2 fixed command sequences re-typed in prose every run (`qt-nix-wrapper-diagnose`'s build+inspect pass, `audit`'s scope detection) — both extracted to `scripts/` and re-run live to confirm they still match what the prose expects.
-
-### Decisions
-- Skill-audit's 4 fork groups were kept strictly disjoint (no file owned by two agents) so a later fix pass can't collide — same rationale as the 2026-07-04/07-07 `/improve-system` parallel-audit sessions.
-- `## Arguments` additions are prose sections, deliberately not an `arguments:` YAML frontmatter key — that isn't a supported SKILL.md feature.
-- Skipped as low-value: `codebase-improvement-sweep`'s hardcoded recon-area list (minor drift risk, a one-line catch-all would cover it) and the duplicated `pytest` verify command across the two new skills (too trivial to extract).
-
-### Issues / surprises
-- The audit's one real bug was self-inflicted within the same session: `mechanical-sweep-refactor`'s own smoke test had already swept the exact `Optional[X]` pattern out of `models/` that `new-feature/SKILL.md` was still documenting as convention. A good illustration of why this audit is worth re-running after any sweep that touches a documented convention.
-- The mechanical sweep's generated script had a real bug caught by its own diff-spot-check step (see above) — validates that step's inclusion in the skill rather than being purely ceremonial.
-
-### Next session
-- No app-facing next steps from this session — natalie-laptop rebuild, the Charts/Expenses GUI eyeball, and multi-user partitioning (from 2026-07-16) are all still open and untouched.
-
-**Commits**: `4057536..68db9e0` (8 commits)
-
----
-
-## Session: 2026-07-16 — Improvement Sweep (Trend Chart, Filters, Multi-System Flake)
-
-**Focus**: User delegated an open-ended improvement pass — "take a deep look, implement all of them one by one, verify, commit."
-
-### What changed (and why)
-- **Net-worth trend chart** — the Charts tab now has Spending / Net Worth sub-tabs; the new chart finally shows the snapshots accruing since 2026-07-02. `snapshots.trend_segments()` (pure, unit-tested) breaks the line wherever adjacent snapshots are >7 days apart and a scatter overlay dots every point, so days the app never ran render as honest gaps instead of interpolation. This was project-state's short-term goal #1.
-- **Expenses tab filters** — "This month only" checkbox + live search, copied from the Payments pattern; expenses accumulated forever with no way to narrow them. First behavioral view tests added (`test_expenses_view.py`).
-- **Multi-system `flake.nix`** — packages/checks/devShells now generated per-system (`forAllSystems`, x86_64-linux + aarch64-linux) so an ARM machine could consume the flake unchanged; derivations identical, NixOS-side path untouched.
-- **One `money()` formatter** — the Expenses tab had drifted to `$1234.56`; all ~40 money displays across twelve view modules now route through `views/_table.money()`.
-- **CI confirmed green** on the real GitHub runner (first real `qt-launch` runs included) — closed old Next Steps #2 with no change.
-
-### Decisions
-- Skipped the interactive `/interview` — the user's mandate was explicit and complete, and the work was done strictly serially per instruction (each item verified via full pytest before its own commit; `nix flake check` as the final gate).
-- Trend gap threshold is 7 days (inclusive), one colour for all segments, Y axis floats around min/max (net worth can be negative), X axis padded a day so a lone snapshot isn't degenerate.
-- No Darwin in the flake systems list — PySide6/Qt wrapping there is unproven in nixpkgs and no Mac exists in the fleet.
-- money() sweep done fully (scripted regex + hand-checked diff) rather than half-converting — two live idioms would be worse than one.
-
-### Issues / surprises
-- None — all four items landed clean; tests 151 → 159, all passing.
-- Close-out note: `secret-scan` isn't available in this project's skill list, so the README public-safety pass was a manual grep for secret/IP/MAC patterns over the updated docs (clean).
-
-### Next session
-- Rebuild natalie-laptop (`nix flake update financeguru` in the NixOS repo) — still can't launch the app until it gets `517d45e`; the bump also ships this session's sweep.
-- Real-display GUI eyeball of the new trend chart + existing charts polish items; decide whether the stacked spending chart should exclude Savings.
-
-**Commits**: `3691ece..1ebac14` (4 commits)
 
 ---
 
