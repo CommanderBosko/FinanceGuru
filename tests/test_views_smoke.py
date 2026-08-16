@@ -53,15 +53,15 @@ from financeguru.views.stocks_view import StocksView
 EXPECTED_TABS = [
     "Dashboard",
     "Bills",
-    "Payments",
-    "Expenses",
-    "Income",
-    "Stocks",
-    "Stock Tips",
-    "Debt Snowball",
-    "Goals",
     "Charts",
     "Currency Converter",
+    "Debt Snowball",
+    "Expenses",
+    "Goals",
+    "Income",
+    "Payments",
+    "Stock Tips",
+    "Stocks",
 ]
 
 # Every tab widget class, importable directly so a failure points at the view
