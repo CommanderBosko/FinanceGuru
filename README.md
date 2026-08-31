@@ -187,6 +187,10 @@ packaging/
 
 ## Recent Changes
 
+**2026-08-31 — Skill-Library Maintenance (Internal)**
+
+- Internal only, no user-facing changes: the `manager` agent ran a full `/improve-system` pass (skill-upgrade, skill-suggestion, agent-suggestion, claude-rules, skill-audit, fewer-permission-prompts) and landed it as PR #2. Fixed a real bug in the `qt-visual-verify` skill's documented headless-screenshot command (it was silently rendering on-screen instead of offscreen), plus two smaller skill-audit findings (a data-mutating decision in `db-migration` now requires explicit confirmation; a doc/script duplication in `secret-scan` removed). Suite unchanged at 240 tests.
+
 **2026-08-16 — Currency Converter Tab + Tab Reorder**
 
 - **New Currency Converter tab** — convert between ~31 major world currencies ("Name (Country)" format), with live rates from the free Frankfurter API, a local cache with an offline fallback, and last-used From/To/amount remembered across restarts.

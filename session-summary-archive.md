@@ -1,3 +1,28 @@
+## Session: 2026-07-26 — Cross-Platform Packaging (Flatpak + Windows/macOS)
+
+**Focus**: Ship FinanceGuru beyond NixOS — Flatpak first (locally testable), then Windows/macOS via PyInstaller (CI-only, no local hardware for either).
+
+### What changed (and why)
+- **Flatpak packaging** (`packaging/flatpak/`) — manifest on `io.qt.PySide.BaseApp`/`org.kde.Platform`, verified end-to-end locally (`flatpak-builder` build → export → bundle → install → launch) before a CI job was added to build/launch it under Xvfb on every push.
+- **Windows + macOS packaging** (`packaging/pyinstaller/`) — a single `sys.platform`-branched PyInstaller spec, built and smoke-launched entirely on GitHub's hosted runners. `main_window.py`'s icon fallback fixed for a PyInstaller freeze (was assuming the Nix source-tree layout, which resolves to nothing once frozen — now uses `sys._MEIPASS`).
+- **`DB_DIR` now resolves via `platformdirs`** instead of a hardcoded `~/.local/share` path, with a test proving the Linux path stays byte-identical so bosko/natty's existing production databases aren't orphaned.
+- **Three real CI-only bugs, none reproducible locally**, each found only by watching an actual `gh run`: the CI runner never had `flatpak-builder`/`pytest` installed before invoking them; the `flatpak/flatpak-github-actions` action org is deprecated and needs privileged system-level flatpak access a non-root CI user doesn't have (switched to the maintained `flathub-infra` fork, pinned to KDE runtime 6.10); Windows' `platformdirs` resolves the path via the native `SHGetKnownFolderPath` API rather than reading `%LOCALAPPDATA%`, so the env-var-override technique that works on Linux/macOS silently didn't apply — rewritten to assert against the real `LOCALAPPDATA`.
+
+### Decisions
+- Code signing (Windows) and notarization (macOS, $99/yr, no free tier) deliberately out of scope — documented as an expected SmartScreen/Gatekeeper bypass step in the README instead.
+- This incident is the concrete example behind the "verify real CI, not just local" project memory — local reproduction of a build step proved insufficient three separate times in this session alone.
+
+### Issues / surprises
+- All three CI-only bugs above were genuine surprises — each had already been verified thoroughly *locally* before being pushed, and each still failed in the real GitHub Actions environment for reasons no local repro could have caught (missing installs, a deprecated Action, an OS API vs. env-var mismatch).
+
+### Next session
+- Get hands-on verification of the Windows/macOS/Flatpak builds on real hardware, or make a deliberate call to accept CI-only verification long-term.
+- natalie-laptop still needs `nix flake update financeguru` + rebuild to pick up this and everything since 2026-07-07.
+
+**Commits**: `25c9894..fe7d823` (5 commits + merge)
+
+---
+
 ## Session: 2026-07-23 — Two New Skills + Skill-Audit Sweep
 
 **Focus**: User asked for `/skill-suggestion` and `/skill-upgrade` ideas mined from session logs since their last run, then to build and ship the resulting candidates, then to `/skill-audit` the whole project-local skill set.

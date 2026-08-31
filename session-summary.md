@@ -4,6 +4,32 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-08-31 — `/improve-system` via `manager` agent (skill-tooling only)
+
+**Focus**: Close out a gap since the 2026-08-16 close-out — no app code changed; the only landed work was a `manager`-agent-run `/improve-system` sweep across the Claude-skill layer.
+
+### What changed (and why)
+- **`/improve-system` run end-to-end by the `manager` agent** (user asked for it explicitly), deciding every "confirm structural" gate itself per `~/.claude/manager-profile.md`. Landed as PR #2 (`chore/improve-system-2026-08-31` → squash-merged `4e06c47`), after watching real CI (flake-check, macos-package, flatpak-check, windows-package) to completion before merging.
+- **Real bug fixed**: `qt-visual-verify`'s documented headless command (`QT_QPA_PLATFORM=offscreen nix develop --command python <script>.py`) doesn't actually render offscreen — `flake.nix`'s devShell `shellHook` clobbers `QT_QPA_PLATFORM` after the shell starts. Fixed with a new `scripts/run-headless.sh` wrapper (sets the var via `env` *after* `--command` so it survives the shellHook); verified empirically both broken and fixed.
+- Two smaller skill-audit fixes: `db-migration`'s re-tag-existing-records decision now goes through `AskUserQuestion` (mutates real financial data); `secret-scan`'s SKILL.md no longer duplicates `scripts/secret-scan.sh`'s config block (pointed at the script as source of truth instead).
+- `fewer-permission-prompts` added 4 read-only, ≥3-occurrence Bash entries to `.claude/settings.json`.
+- skill-upgrade / skill-suggestion / agent-suggestion / claude-rules all came back clean.
+
+### Decisions
+- Fixed `qt-visual-verify` with a root-cause wrapper script rather than patching the wrong inline command in the docs.
+- Declined a `config.json` for `secret-scan` (would need matching `create-secret-scan` support, out of this project's scope) in favor of pointing prose at the existing script.
+
+### Issues / surprises
+- A first attempt at this same `/improve-system` run, in an earlier session that day, hit a permission/mode boundary the manager agent needed to flip to proceed autonomously — a designed hard boundary, correctly not routed around via a different tool. It offered to run directly instead or wait for the user to flip the mode interactively, and stopped there. A retry in a fresh session succeeded.
+- Session-closer's own transcript-cutoff detector (`find-last-skill-invocation.sh`) again mis-detected the last close — it reported a cutoff of 2026-08-31, but the actual last `chore(session)` commit was 2026-08-16. Fell back to the git-log baseline per the documented gotcha and mined all 6 intervening transcripts by hand; only the one commit above resulted from any of them.
+
+### Next session
+- No app-facing next steps opened this session — see `project-state.md`'s Next Steps (natalie-laptop rebuild, Charts GUI eyeball, non-Linux hardware verification, multi-user partitioning) for what's actually open.
+
+**Commits**: `4e06c47` (1 commit)
+
+---
+
 ## Session: 2026-08-16 — Currency Converter Tab + Tab Reorder
 
 **Focus**: Add a Currency Converter tab (two "Name (Country)" dropdowns, live rates), then reorder tabs alphabetically with Dashboard pinned first.
@@ -104,31 +130,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - No app-facing next steps from this session — see the cross-platform packaging entry below and `project-state.md`'s Next Steps for what's actually open.
 
 **Commits**: `48be9b4..a6f0b35` (4 commits)
-
----
-
-## Session: 2026-07-26 — Cross-Platform Packaging (Flatpak + Windows/macOS)
-
-**Focus**: Ship FinanceGuru beyond NixOS — Flatpak first (locally testable), then Windows/macOS via PyInstaller (CI-only, no local hardware for either).
-
-### What changed (and why)
-- **Flatpak packaging** (`packaging/flatpak/`) — manifest on `io.qt.PySide.BaseApp`/`org.kde.Platform`, verified end-to-end locally (`flatpak-builder` build → export → bundle → install → launch) before a CI job was added to build/launch it under Xvfb on every push.
-- **Windows + macOS packaging** (`packaging/pyinstaller/`) — a single `sys.platform`-branched PyInstaller spec, built and smoke-launched entirely on GitHub's hosted runners. `main_window.py`'s icon fallback fixed for a PyInstaller freeze (was assuming the Nix source-tree layout, which resolves to nothing once frozen — now uses `sys._MEIPASS`).
-- **`DB_DIR` now resolves via `platformdirs`** instead of a hardcoded `~/.local/share` path, with a test proving the Linux path stays byte-identical so bosko/natty's existing production databases aren't orphaned.
-- **Three real CI-only bugs, none reproducible locally**, each found only by watching an actual `gh run`: the CI runner never had `flatpak-builder`/`pytest` installed before invoking them; the `flatpak/flatpak-github-actions` action org is deprecated and needs privileged system-level flatpak access a non-root CI user doesn't have (switched to the maintained `flathub-infra` fork, pinned to KDE runtime 6.10); Windows' `platformdirs` resolves the path via the native `SHGetKnownFolderPath` API rather than reading `%LOCALAPPDATA%`, so the env-var-override technique that works on Linux/macOS silently didn't apply — rewritten to assert against the real `LOCALAPPDATA`.
-
-### Decisions
-- Code signing (Windows) and notarization (macOS, $99/yr, no free tier) deliberately out of scope — documented as an expected SmartScreen/Gatekeeper bypass step in the README instead.
-- This incident is the concrete example behind the "verify real CI, not just local" project memory — local reproduction of a build step proved insufficient three separate times in this session alone.
-
-### Issues / surprises
-- All three CI-only bugs above were genuine surprises — each had already been verified thoroughly *locally* before being pushed, and each still failed in the real GitHub Actions environment for reasons no local repro could have caught (missing installs, a deprecated Action, an OS API vs. env-var mismatch).
-
-### Next session
-- Get hands-on verification of the Windows/macOS/Flatpak builds on real hardware, or make a deliberate call to accept CI-only verification long-term.
-- natalie-laptop still needs `nix flake update financeguru` + rebuild to pick up this and everything since 2026-07-07.
-
-**Commits**: `25c9894..fe7d823` (5 commits + merge)
 
 ---
 
