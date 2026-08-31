@@ -5,7 +5,11 @@
       "Bash(nix develop *)",
       "Bash(nix eval *)",
       "Bash(nix flake check)",
-      "mcp__nixos__nix"
+      "mcp__nixos__nix",
+      "Bash(/home/bosko/.claude/skills/session-closer/scripts/scan-session.sh *)",
+      "Bash(~/.claude/skills/lib/find-last-skill-invocation.sh *)",
+      "Bash(/home/bosko/.claude/skills/git-commit/scripts/git-commit.sh status)",
+      "Bash(/home/bosko/projects/FinanceGuru/.claude/skills/audit/scripts/determine-scope.sh)"
     ]
   }
 }
