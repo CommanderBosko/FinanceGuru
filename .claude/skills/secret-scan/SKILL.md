@@ -16,11 +16,16 @@ None.
 
 ## What it knows about this project
 
+The values below are a human-readable summary — **`scripts/secret-scan.sh`'s "Project-specific
+configuration" block (top of the file) is the actual source of truth.** If you change one, change
+the script first and update this summary to match; don't edit these bullets independently.
+
 - **Secret-management scheme:** None. FinanceGuru needs no API keys or credentials — yfinance is used unauthenticated. There is no `.env`, no encrypted secrets directory, no sops/git-crypt/vault.
-- **Encrypted/managed secret locations:** N/A — no encryption scheme is configured for this project.
-- **Paths excluded from pattern matching:** Only this skill's own directory (`.claude/skills/secret-scan/`), since its docs legitimately contain example secret patterns.
+- **Encrypted/managed secret locations:** N/A — no encryption scheme is configured for this project (`ENCRYPTED_GLOB`/`ENCRYPTED_MARKERS` both empty).
+- **Paths excluded from pattern matching:** Only this skill's own directory (`.claude/skills/secret-scan/`), since its docs legitimately contain example secret patterns (`EXCLUDE`).
 - **Known intentional non-secrets (don't flag these):** None identified — no real IPs, public keys, or demo tokens are documented anywhere in this repo.
-- **Full git-history scan:** Enabled — the repo is small, so a full-history scan is fast and worth the coverage.
+- **Full git-history scan:** Enabled — the repo is small, so a full-history scan is fast and worth the coverage (`SCAN_HISTORY="yes"`).
+- **.gitignore coverage checked:** `*.db`, `*.sqlite`, `*.sqlite3` (`GITIGNORE_PATTERNS`) — the user's real financial database, not a credential, but the actual sensitive artifact in this repo.
 
 ## Instructions
 

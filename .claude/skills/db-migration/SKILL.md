@@ -29,7 +29,7 @@ Other invariants to respect:
 Usually fully described in the user's request rather than named as flags, but confirm both before touching `db.py`:
 
 - **The change** — new table, new column, a rename/data fixup, or new seed/default rows (drives which phase(s) in step 1 apply).
-- **Re-tag existing records?** — for a rename/fixup, whether existing rows should be updated to the new value (a complete rename) or left alone (picker-only rename). See step 3.
+- **Re-tag existing records?** — for a rename/fixup, whether existing rows should be updated to the new value (a complete rename) or left alone (picker-only rename). This mutates the user's existing financial data, so confirm it via the **AskUserQuestion** tool — options **Re-tag existing records** (complete rename) and **Leave existing records alone** (picker-only rename) — rather than assuming. See step 3.
 
 ## Steps
 
@@ -41,7 +41,7 @@ Usually fully described in the user's request rather than named as flags, but co
 
 2. **Keep migrations idempotent.** `init_db()` runs on every launch, so every migration must be a no-op once applied. Use `IF NOT EXISTS`, `INSERT OR IGNORE`, `_ensure_column`'s presence check, or an explicit guard that reads current state first. Never write a migration that fails or duplicates on a second run.
 
-3. **For a data rename/fixup, write a guarded helper and re-tag records.** Mirror `_rename_category`: read current state, bail if the change is already applied *or* would collide, then update the row **and** re-tag every free-text reference. Read `assets/rename_category_template.py` for the pattern and adapt it — swap the table/column names and add an `UPDATE` line for every free-text table that references the old value. Decide deliberately whether to re-tag existing records (a *complete* rename) or leave them (the in-app picker rename is deliberately picker-only). State which you chose and why in a comment.
+3. **For a data rename/fixup, write a guarded helper and re-tag records.** Mirror `_rename_category`: read current state, bail if the change is already applied *or* would collide, then update the row **and** re-tag every free-text reference. Read `assets/rename_category_template.py` for the pattern and adapt it — swap the table/column names and add an `UPDATE` line for every free-text table that references the old value. Confirm via **AskUserQuestion** (per Arguments above) whether to re-tag existing records (a *complete* rename) or leave them (the in-app picker rename is deliberately picker-only) — don't assume. State which was chosen and why in a comment.
 
 4. **Order data migrations BEFORE seeding.** A rename must run before the `INSERT OR IGNORE` seeding loop, or the loop re-adds the old name as a brand-new row. On a fresh DB the table is still empty at migration time, so a well-guarded migration correctly no-ops and seeding inserts the new names directly. Verify both paths in your head before moving on.
 
