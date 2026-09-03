@@ -68,3 +68,60 @@ def test_context_menu_refresh_is_noop_while_fetch_in_flight(qapp, temp_db, monke
     finally:
         view.deleteLater()
         qapp.processEvents()
+
+
+# --- Global month filter (added_date) ----------------------------------------
+# Stock Tips previously had zero month filtering; the global month selector in
+# MainWindow now drives it via select_month()/select_all(), filtering by each
+# tip's own added_date. Unlike Bills/Payments/etc., Stock Tips doesn't
+# contribute to the global month list (see StockTipsView — no month_keys()).
+
+
+def test_defaults_to_all_and_shows_everything(qapp, temp_db):
+    tips_repo.add(StockTip(id=0, ticker="NVDA", action="Buy", target_price=Decimal("180.00"),
+                           confidence=4, notes=None, added_date="2026-01-01"))
+    tips_repo.add(StockTip(id=0, ticker="AAPL", action="Hold", target_price=Decimal("200.00"),
+                           confidence=3, notes=None, added_date="2026-06-15"))
+    view = StockTipsView()
+    try:
+        assert view._current_key is None
+        assert view._table.rowCount() == 2
+    finally:
+        view.deleteLater()
+        qapp.processEvents()
+
+
+def test_select_month_filters_by_added_date(qapp, temp_db):
+    tips_repo.add(StockTip(id=0, ticker="NVDA", action="Buy", target_price=Decimal("180.00"),
+                           confidence=4, notes=None, added_date="2026-01-01"))
+    tips_repo.add(StockTip(id=0, ticker="AAPL", action="Hold", target_price=Decimal("200.00"),
+                           confidence=3, notes=None, added_date="2026-06-15"))
+    view = StockTipsView()
+    try:
+        view.select_month(2026, 1)
+        assert view._table.rowCount() == 1
+        assert view._table.item(0, 0).text() == "NVDA"
+
+        view.select_month(2026, 6)
+        assert view._table.rowCount() == 1
+        assert view._table.item(0, 0).text() == "AAPL"
+
+        view.select_all()
+        assert view._table.rowCount() == 2
+    finally:
+        view.deleteLater()
+        qapp.processEvents()
+
+
+def test_select_month_with_no_matching_tips_shows_an_empty_table(qapp, temp_db):
+    # Accepted per the Project Brief: a globally-selected month with no
+    # relevant data for this tab is an empty state, not a bug.
+    tips_repo.add(StockTip(id=0, ticker="NVDA", action="Buy", target_price=Decimal("180.00"),
+                           confidence=4, notes=None, added_date="2026-01-01"))
+    view = StockTipsView()
+    try:
+        view.select_month(2026, 12)
+        assert view._table.rowCount() == 0
+    finally:
+        view.deleteLater()
+        qapp.processEvents()

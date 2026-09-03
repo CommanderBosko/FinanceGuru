@@ -48,11 +48,6 @@ def _names(view) -> set[str]:
     return {view._table.item(r, 0).text() for r in range(view._table.rowCount())}
 
 
-def _select(view, label: str) -> None:
-    labels = [view._month_picker.itemText(i) for i in range(view._month_picker.count())]
-    view._month_picker.setCurrentIndex(labels.index(label))
-
-
 def test_defaults_to_all_and_shows_every_goal(view):
     goal_repo.add(Goal(name="Car", price=Decimal("500"), target_date="2026-12-31",
                         start_date="2026-01-01"))
@@ -60,7 +55,7 @@ def test_defaults_to_all_and_shows_every_goal(view):
                         start_date="2026-06-01"))
     view._refresh()
 
-    assert view._month_picker.currentText() == "All"
+    assert view._current_key is None
     assert {"Car", "TV"} <= _names(view)
 
 
@@ -78,28 +73,28 @@ def test_goal_disappears_once_funded_but_shows_in_completion_month(view):
     payment_repo.add(Payment(amount=Decimal("300"), paid_date="2026-01-01", bill_id=bill_id))
     view._refresh()
 
-    _select(view, "January 2026")
+    view.select_month(2026, 1)
     assert "Laptop" in _names(view)
 
-    _select(view, "February 2026")
+    view.select_month(2026, 2)
     assert "Laptop" not in _names(view)
 
-    _select(view, "All")
+    view.select_all()
     assert "Laptop" in _names(view)
 
 
 def test_goal_hidden_before_its_start_month(view):
-    # Pulls "January 2026" into the picker.
+    # Pulls (2026, 1) into month_keys().
     goal_repo.add(Goal(name="Anchor", price=Decimal("50"), target_date="2027-01-01",
                         start_date="2026-01-01"))
     goal_repo.add(Goal(name="Future Goal", price=Decimal("200"), target_date="2026-12-31",
                         start_date="2026-06-01"))
     view._refresh()
 
-    _select(view, "January 2026")
+    view.select_month(2026, 1)
     assert "Future Goal" not in _names(view)
 
-    _select(view, "June 2026")
+    view.select_month(2026, 6)
     assert "Future Goal" in _names(view)
 
 
@@ -109,12 +104,36 @@ def test_select_month_selects_populated_month_and_falls_back_to_all(view):
     view._refresh()
 
     view.select_month(2026, 8)
-    assert view._month_picker.currentText() == "August 2026"
+    assert view._current_key == (2026, 8)
     assert "Vacation" in _names(view)
 
+    # 2099-01 isn't one of this tab's own populated entries (see
+    # month_keys) — falls back to "All" so a Notes-tab link click is never
+    # left on a dead selection.
     view.select_month(2099, 1)
-    assert view._month_picker.currentText() == "All"
+    assert view._current_key is None
     assert "Vacation" in _names(view)
+
+
+def test_select_month_strict_skips_the_fallback(view):
+    # MainWindow's global broadcast passes strict=True specifically so the
+    # toolbar can never show a specific month while this tab silently shows
+    # every goal instead — see main_window.py's _STRICT_ON_GLOBAL.
+    bill_id = bill_repo.add(Bill(name="Laptop", amount=Decimal("300"), due_day=15,
+                                  recurrence="monthly"))
+    goal_repo.add(Goal(name="Laptop", price=Decimal("300"), target_date="2026-03-31",
+                        start_date="2026-01-01", bill_id=bill_id))
+    payment_repo.add(Payment(amount=Decimal("300"), paid_date="2026-02-01", bill_id=bill_id))
+    view._refresh()
+
+    # Fully funded well before 2099 and not one of this tab's own populated
+    # entries — non-strict select_month would fall back to "All" (which
+    # shows it anyway, ignoring the funded cutoff). Strict mode selects
+    # 2099-01 literally: the goal is long since funded, so it's correctly
+    # absent rather than appearing via a silent All fallback.
+    view.select_month(2099, 1, strict=True)
+    assert view._current_key == (2099, 1)
+    assert "Laptop" not in _names(view)
 
 
 def _left(view, name: str) -> str:
@@ -134,10 +153,10 @@ def test_amount_left_reflects_balance_as_of_the_selected_month_not_today(view):
     payment_repo.add(Payment(amount=Decimal("300"), paid_date="2026-06-01", bill_id=bill_id))
     view._refresh()
 
-    _select(view, "January 2026")
+    view.select_month(2026, 1)
     assert _left(view, "Laptop") == "$300.00"
 
-    _select(view, "All")
+    view.select_all()
     assert _left(view, "Laptop") == "$0.00"
 
 

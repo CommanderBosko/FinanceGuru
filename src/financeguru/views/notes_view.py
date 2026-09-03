@@ -2,7 +2,7 @@ from datetime import date
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
+    QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -11,7 +11,7 @@ from financeguru.models.note import Note
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
 from financeguru.repositories import notes as note_repo
-from financeguru.views._month_filter import populate_month_picker
+from financeguru.views._month_filter import month_entries
 from financeguru.views._table import center
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.note_dialog import NoteDialog
@@ -53,6 +53,15 @@ class NotesView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._notes: list[Note] = []
+        # Notes has no "All" state — every note is always filed under exactly
+        # one month — so this is always a concrete (year, month), never None.
+        # Owned locally so this view still works standalone (tests,
+        # qt-smoke); under MainWindow it's driven by the global month
+        # selector via select_month() below, which — unlike every other
+        # affected tab — deliberately has no select_all() counterpart: a
+        # global "All" is simply never forwarded here (see MainWindow),
+        # so Notes just keeps showing whichever specific month it was on.
+        self._current_key: tuple[int, int] = (date.today().year, date.today().month)
 
         layout = QVBoxLayout(self)
 
@@ -62,11 +71,9 @@ class NotesView(QWidget):
         self._btn_delete = QPushButton("Delete")
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
-        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
-        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
         layout.addLayout(btn_bar)
 
@@ -81,7 +88,6 @@ class NotesView(QWidget):
         self._btn_add.clicked.connect(self._on_add)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
-        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
 
@@ -97,15 +103,29 @@ class NotesView(QWidget):
     def refresh(self) -> None:
         self._refresh()
 
-    def _refresh(self) -> None:
-        earliest = note_repo.earliest_month()
-        # "YYYY-MM" -> "YYYY-MM-01" so populate_month_picker's day-based
-        # parsing (it slices [:4]/[5:7]) works the same as every other tab.
-        earliest_date = f"{earliest}-01" if earliest else None
-        populate_month_picker(self._month_picker, earliest_date, include_all=False)
+    def month_keys(self) -> list[tuple[int, int]]:
+        """(year, month) keys this tab currently considers interesting —
+        every month from the earliest note on record through today.
 
-        key = self._month_picker.currentData()
-        year, month = key
+        Used by MainWindow to build the global month selector's entries.
+        """
+        earliest = note_repo.earliest_month()
+        # "YYYY-MM" -> "YYYY-MM-01" so month_entries' day-based parsing (it
+        # slices [:4]/[5:7]) works the same as every other tab.
+        earliest_date = f"{earliest}-01" if earliest else None
+        return [key for _, key in month_entries(earliest_date, include_all=False)]
+
+    def select_month(self, year: int, month: int) -> None:
+        """Programmatically select `(year, month)` as the current filter.
+
+        There is deliberately no select_all() counterpart — see the
+        _current_key comment in __init__.
+        """
+        self._current_key = (year, month)
+        self._refresh()
+
+    def _refresh(self) -> None:
+        year, month = self._current_key
         self._notes = note_repo.get_for_month(year, month)
 
         bills_by_id = {b.id: b for b in bill_repo.get_all() if b.id is not None}
@@ -171,7 +191,7 @@ class NotesView(QWidget):
             btn.setEnabled(enabled)
 
     def _current_month_year(self) -> str:
-        year, month = self._month_picker.currentData()
+        year, month = self._current_key
         return f"{year:04d}-{month:02d}"
 
     def _on_add(self) -> None:

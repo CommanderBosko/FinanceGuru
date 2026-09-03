@@ -11,7 +11,7 @@ from datetime import date
 
 from PySide6.QtWidgets import QComboBox
 
-from financeguru.views._month_filter import populate_month_picker
+from financeguru.views._month_filter import populate_from_keys, populate_month_picker
 
 
 def test_populates_all_plus_every_month_back_to_earliest(qapp):
@@ -92,3 +92,56 @@ def test_include_all_false_preserves_selection_across_repopulation(qapp):
 
     populate_month_picker(combo, "2025-01-15", include_all=False)
     assert combo.currentText() == "January 2025"
+
+
+# --- populate_from_keys (MainWindow's global month selector) ----------------
+
+
+def test_populate_from_keys_builds_all_plus_every_key_sorted_newest_first(qapp):
+    combo = QComboBox()
+    populate_from_keys(combo, {(2025, 1), (2026, 3), (2025, 6)})
+
+    labels = [combo.itemText(i) for i in range(combo.count())]
+    assert labels[0] == "All"
+    # Sparse, not contiguous — unlike month_entries' earliest-to-today fill,
+    # there's no "February 2026" entry just because January and March exist.
+    assert labels[1:] == ["March 2026", "June 2025", "January 2025"]
+
+
+def test_populate_from_keys_defaults_to_current_month_when_present(qapp):
+    combo = QComboBox()
+    today = date.today()
+    populate_from_keys(combo, {(today.year, today.month), (2020, 1)})
+    assert combo.currentText() == today.strftime("%B %Y")
+
+
+def test_populate_from_keys_falls_back_to_all_when_current_month_absent(qapp):
+    combo = QComboBox()
+    # Neither key is the current month — every contributing tab seeds it in
+    # practice, but this helper itself must still degrade gracefully.
+    populate_from_keys(combo, {(2020, 1), (2019, 5)})
+    assert combo.currentText() == "All"
+
+
+def test_populate_from_keys_preserves_selection_across_repopulation(qapp):
+    combo = QComboBox()
+    keys = {(2025, 1), (2026, 3)}
+    populate_from_keys(combo, keys)
+    labels = [combo.itemText(i) for i in range(combo.count())]
+    combo.setCurrentIndex(labels.index("January 2025"))
+
+    populate_from_keys(combo, keys)
+    assert combo.currentText() == "January 2025"
+
+
+def test_populate_from_keys_falls_back_to_current_month_when_previous_selection_vanishes(qapp):
+    combo = QComboBox()
+    today = date.today()
+    populate_from_keys(combo, {(2025, 1), (today.year, today.month)})
+    labels = [combo.itemText(i) for i in range(combo.count())]
+    combo.setCurrentIndex(labels.index("January 2025"))
+
+    # Re-populate without (2025, 1) — the previous selection vanished, so
+    # this falls back to the current month (present) rather than "All".
+    populate_from_keys(combo, {(today.year, today.month)})
+    assert combo.currentText() == today.strftime("%B %Y")

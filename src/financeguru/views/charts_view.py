@@ -15,9 +15,6 @@ from PySide6.QtCharts import (
 from PySide6.QtCore import QDate, QDateTime, Qt, QTime
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QComboBox,
-    QHBoxLayout,
-    QLabel,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -39,6 +36,17 @@ class ChartsView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._months: list[dict] = []
+        # The pie chart's currently selected (year, month). Owned locally so
+        # this view still works standalone (tests, qt-smoke); under
+        # MainWindow it's driven by the global month selector via
+        # select_month() below, which — like Notes — deliberately has no
+        # select_all() counterpart: the pie chart can't render "All" as
+        # content, so a global "All" is simply never forwarded here (see
+        # MainWindow) and the pie keeps showing whichever specific month it
+        # was last on. Set for real once refresh() below has fetched
+        # self._months (defaults to the window's most recent — i.e. current —
+        # month, mirroring the old combo's own first-population default).
+        self._current_key: tuple[int, int] | None = None
 
         layout = QVBoxLayout(self)
 
@@ -50,15 +58,6 @@ class ChartsView(QWidget):
         # --- Spending page ---------------------------------------------------
         spending_page = QWidget()
         spending_layout = QVBoxLayout(spending_page)
-
-        controls = QHBoxLayout()
-        controls.addStretch()
-
-        controls.addWidget(QLabel("Pie month:"))
-        self._month_picker = QComboBox()
-        controls.addWidget(self._month_picker)
-
-        spending_layout.addLayout(controls)
 
         self._time_chart = QChart()
         self._time_view = QChartView(self._time_chart)
@@ -83,34 +82,51 @@ class ChartsView(QWidget):
 
         self._subtabs.addTab(networth_page, "Net Worth")
 
-        # Signals — connect after building widgets so initial refresh is clean.
-        self._month_picker.currentIndexChanged.connect(self._rebuild_pie_chart)
-
         self.refresh()
 
     # -- Public API -----------------------------------------------------------
     def refresh(self) -> None:
-        """Re-query reporting and rebuild both charts and the month picker."""
+        """Re-query reporting and rebuild all three charts.
+
+        Only sets a default _current_key on true first construction (when
+        it's still None) — once a month has been explicitly selected (by
+        MainWindow's global broadcast or a direct select_month() call), a
+        later refresh() must never silently reassign it just because the
+        rolling window moved past it. MainWindow's global picker is the sole
+        source of truth for "which month is selected"; if this reassigned
+        _current_key on its own, the picker could keep showing an old month
+        while the pie chart silently jumped to a different one underneath it
+        (e.g. on a DB restore, or simply switching back to this tab).
+        """
         self._months = reporting.monthly_spending(_WINDOW)
 
-        # Repopulate the month picker, preserving the current selection if the
-        # same label is still present; otherwise default to the last (current) month.
-        previous = self._month_picker.currentText()
-        labels = [entry["label"] for entry in self._months]
-
-        self._month_picker.blockSignals(True)
-        self._month_picker.clear()
-        self._month_picker.addItems(labels)
-        if labels:
-            if previous in labels:
-                self._month_picker.setCurrentIndex(labels.index(previous))
-            else:
-                self._month_picker.setCurrentIndex(len(labels) - 1)
-        self._month_picker.blockSignals(False)
+        if self._current_key is None and self._months:
+            last = self._months[-1]
+            self._current_key = (last["year"], last["month"])
 
         self._rebuild_time_chart()
         self._rebuild_pie_chart()
         self._rebuild_trend_chart()
+
+    def month_keys(self) -> list[tuple[int, int]]:
+        """(year, month) keys in the pie chart's rolling window.
+
+        Freshly computed each call — unlike self._months, which only updates
+        on refresh() — so MainWindow's global list stays accurate even in a
+        long session where this tab is never visited (self._months would
+        otherwise stay anchored to whatever "today" was at the last refresh).
+        Used by MainWindow to build the global month selector's entries.
+        """
+        return [(entry["year"], entry["month"]) for entry in reporting.monthly_spending(_WINDOW)]
+
+    def select_month(self, year: int, month: int) -> None:
+        """Programmatically select `(year, month)` as the pie chart's month.
+
+        There is deliberately no select_all() counterpart — see the
+        _current_key comment in __init__.
+        """
+        self._current_key = (year, month)
+        self._rebuild_pie_chart()
 
     # -- Over-time chart ------------------------------------------------------
     def _rebuild_time_chart(self) -> None:
@@ -237,17 +253,11 @@ class ChartsView(QWidget):
         chart = self._pie_chart
         chart.removeAllSeries()
 
-        label = self._month_picker.currentText()
-        if not label:
+        if self._current_key is None:
             chart.setTitle("Category breakdown (no data)")
             return
-
-        try:
-            year_s, month_s = label.split("-")
-            year, month = int(year_s), int(month_s)
-        except ValueError:
-            chart.setTitle("Category breakdown (no data)")
-            return
+        year, month = self._current_key
+        label = date(year, month, 1).strftime("%B %Y")
 
         breakdown = reporting.category_breakdown(year, month)
 

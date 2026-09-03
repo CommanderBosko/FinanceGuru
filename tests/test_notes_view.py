@@ -43,31 +43,22 @@ def view(qapp, temp_db):
     qapp.processEvents()
 
 
-def _select(view, label: str) -> None:
-    labels = [view._month_picker.itemText(i) for i in range(view._month_picker.count())]
-    view._month_picker.setCurrentIndex(labels.index(label))
-
-
 def _bodies(view) -> list[str]:
     return [view._table.item(r, 1).toolTip() for r in range(view._table.rowCount())]
 
 
-def test_defaults_to_current_month_with_no_all_entry(view):
-    labels = [view._month_picker.itemText(i) for i in range(view._month_picker.count())]
-    assert "All" not in labels
-    assert view._month_picker.currentText() == "June 2026"
+def test_defaults_to_current_month(view):
+    assert view._current_key == (2026, 6)
 
 
 def test_only_current_month_when_there_are_no_notes_yet(view):
-    labels = [view._month_picker.itemText(i) for i in range(view._month_picker.count())]
-    assert labels == ["June 2026"]
+    assert view.month_keys() == [(2026, 6)]
 
 
-def test_month_picker_grows_backward_to_earliest_note(view):
+def test_month_keys_grow_backward_to_earliest_note(view):
     note_repo.add(Note(body="Old", month_year="2026-03"))
     view._refresh()
-    labels = [view._month_picker.itemText(i) for i in range(view._month_picker.count())]
-    assert labels == ["June 2026", "May 2026", "April 2026", "March 2026"]
+    assert view.month_keys() == [(2026, 6), (2026, 5), (2026, 4), (2026, 3)]
 
 
 def test_notes_for_selected_month_sorted_newest_first(view):
@@ -81,17 +72,17 @@ def test_a_note_from_another_month_is_not_shown(view):
     note_repo.add(Note(body="March note", month_year="2026-03"))
     view._refresh()
     assert _bodies(view) == []
-    _select(view, "March 2026")
+    view.select_month(2026, 3)
     assert _bodies(view) == ["March note"]
 
 
-def test_current_month_year_reflects_the_selected_picker_entry(view):
+def test_current_month_year_reflects_the_selected_month(view):
     # This is what _on_add hands to NoteDialog — a new note is filed under
     # whichever month is selected, not necessarily today's, so backfilling a
     # past month works.
     note_repo.add(Note(body="Old", month_year="2026-03"))
     view._refresh()
-    _select(view, "March 2026")
+    view.select_month(2026, 3)
     assert view._current_month_year() == "2026-03"
 
 

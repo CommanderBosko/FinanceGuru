@@ -2,7 +2,7 @@ from datetime import date
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
+    QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -80,6 +80,11 @@ class BillsView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._bills: list[Bill] = []
+        # The currently filtered (year, month), or None for "All". Owned
+        # locally so this view still works standalone (tests, qt-smoke); once
+        # wired under MainWindow it's driven entirely by the global month
+        # selector via select_month()/select_all() below, not a local combo.
+        self._current_key: MonthKey = (date.today().year, date.today().month)
 
         layout = QVBoxLayout(self)
 
@@ -90,12 +95,10 @@ class BillsView(QWidget):
         self._btn_pay = QPushButton("Mark Paid")
         for btn in (self._btn_edit, self._btn_delete, self._btn_pay):
             btn.setEnabled(False)
-        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
         btn_bar.addWidget(self._btn_pay)
-        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
         layout.addLayout(btn_bar)
 
@@ -113,7 +116,6 @@ class BillsView(QWidget):
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
         self._btn_pay.clicked.connect(self._on_pay)
-        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
 
@@ -130,25 +132,41 @@ class BillsView(QWidget):
     def refresh(self) -> None:
         self._refresh()
 
-    def select_month(self, year: int, month: int) -> None:
-        """Programmatically select (year, month) in the month picker.
+    def month_keys(self) -> list[tuple[int, int]]:
+        """(year, month) keys this tab currently considers interesting.
 
-        Used by a Notes-tab link click to land on the bill's own due month.
-        Matches by the (year, month) tuple stored as each combo item's data.
-        Falls back to "All" (index 0) if that exact month isn't one of this
-        picker's populated entries, so the caller is never left on a dead
-        selection. Always triggers exactly one refresh — mirrors GoalsView's
-        select_month so the two don't drift on this mechanic.
+        Used by MainWindow to build the global month selector's entry list
+        as the union of every affected tab's own list — see `_month_entries`
+        for the actual "interesting months" rule.
+        """
+        return [key for _, key in _month_entries(bill_repo.get_all(), goal_repo.get_all())
+                if key is not None]
+
+    def select_month(self, year: int, month: int, *, strict: bool = False) -> None:
+        """Programmatically select (year, month) as the current filter.
+
+        Used both by MainWindow's global month selector and by a Notes-tab
+        link click landing on a bill's own due month. By default, falls back
+        to "All" (None) if that exact month isn't one of this tab's own
+        populated entries (see `month_keys`), so a Notes-tab link click is
+        never left on a dead selection — this preserves that cross-tab
+        navigation contract unchanged from before the global selector
+        existed. Pass `strict=True` (used only by MainWindow's global
+        broadcast) to select the literal month regardless — otherwise the
+        toolbar could show a specific month while this tab silently falls
+        back to showing everything, which is a materially different, more
+        misleading result than this tab's ordinary "nothing due" empty state
+        for an uninteresting month. Always triggers exactly one refresh —
+        mirrors GoalsView's select_month so the two don't drift on this
+        mechanic.
         """
         target = (year, month)
-        index = 0
-        for i in range(self._month_picker.count()):
-            if self._month_picker.itemData(i) == target:
-                index = i
-                break
-        self._month_picker.blockSignals(True)
-        self._month_picker.setCurrentIndex(index)
-        self._month_picker.blockSignals(False)
+        self._current_key = target if strict or target in self.month_keys() else None
+        self._refresh()
+
+    def select_all(self) -> None:
+        """Programmatically select "All" as the current filter."""
+        self._current_key = None
         self._refresh()
 
     def _refresh(self) -> None:
@@ -156,25 +174,7 @@ class BillsView(QWidget):
         goals = goal_repo.get_all()
         goal_starts = {g.bill_id: g.start_date for g in goals if g.bill_id is not None}
 
-        previous = self._month_picker.currentText()
-        entries = _month_entries(all_bills, goals)
-        labels = [label for label, _ in entries]
-        self._month_picker.blockSignals(True)
-        self._month_picker.clear()
-        for label, key in entries:
-            self._month_picker.addItem(label, key)
-        if previous in labels:
-            self._month_picker.setCurrentIndex(labels.index(previous))
-        else:
-            # First population, or the prior selection vanished — default to
-            # the current month rather than "All".
-            current_label = date.today().strftime("%B %Y")
-            self._month_picker.setCurrentIndex(
-                labels.index(current_label) if current_label in labels else 0
-            )
-        self._month_picker.blockSignals(False)
-
-        key = self._month_picker.currentData()
+        key = self._current_key
         self._bills = [b for b in all_bills if _visible_in_month(b, key, goal_starts)]
 
         self._table.setSortingEnabled(False)

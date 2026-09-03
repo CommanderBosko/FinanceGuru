@@ -1,9 +1,10 @@
+from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QComboBox, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
+    QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
     QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
@@ -13,7 +14,7 @@ from financeguru.models.income import Income
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import incomes as income_repo
-from financeguru.views._month_filter import month_prefix, populate_month_picker
+from financeguru.views._month_filter import MonthKey, month_entries, month_prefix
 from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.income_dialog import IncomeDialog
@@ -29,6 +30,11 @@ class SalaryView(QWidget):
         super().__init__(parent)
         self._incomes: list[Income] = []
         self._rows: list[Income] = []
+        # The currently filtered (year, month), or None for "All". Owned
+        # locally so this view still works standalone (tests, qt-smoke); under
+        # MainWindow it's driven by the global month selector via
+        # select_month()/select_all() below.
+        self._current_key: MonthKey = (date.today().year, date.today().month)
 
         # ── Income controls + table ───────────────────────────────────────
         btn_bar = QHBoxLayout()
@@ -37,11 +43,9 @@ class SalaryView(QWidget):
         self._btn_delete = QPushButton("Delete")
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
-        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
-        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
 
         self._table = QTableWidget(0, len(_COLS))
@@ -119,7 +123,6 @@ class SalaryView(QWidget):
         self._btn_add.clicked.connect(self._on_add)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
-        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
         attach_row_menu(self._table, [
@@ -139,11 +142,29 @@ class SalaryView(QWidget):
         # Public hook MainWindow calls after a DB restore / on tab switch.
         self._refresh()
 
+    def month_keys(self) -> list[tuple[int, int]]:
+        """(year, month) keys this tab currently considers interesting —
+        every month from the earliest paycheck on record through today.
+
+        Used by MainWindow to build the global month selector's entries.
+        """
+        incomes = income_repo.get_all()  # sorted DESC, so the last row is earliest
+        earliest = incomes[-1].pay_date if incomes else None
+        return [key for _, key in month_entries(earliest, include_all=False)]
+
+    def select_month(self, year: int, month: int) -> None:
+        """Programmatically select `(year, month)` as the current filter."""
+        self._current_key = (year, month)
+        self._refresh()
+
+    def select_all(self) -> None:
+        """Programmatically select "All" as the current filter."""
+        self._current_key = None
+        self._refresh()
+
     def _refresh(self) -> None:
         self._incomes = income_repo.get_all()  # sorted DESC, so the last row is earliest
-        earliest = self._incomes[-1].pay_date if self._incomes else None
-        populate_month_picker(self._month_picker, earliest)
-        key = self._month_picker.currentData()
+        key = self._current_key
         if key is not None:
             prefix = month_prefix(key)
             self._rows = [i for i in self._incomes if i.pay_date.startswith(prefix)]
@@ -179,7 +200,7 @@ class SalaryView(QWidget):
             # bills-derived stats as not applicable for "All" instead.
             total_bills = None
         else:
-            scope = self._month_picker.currentText()
+            scope = date(key[0], key[1], 1).strftime("%B %Y")
             total_expenses = expense_repo.total_for_month(*key)
             total_bills = sum(monthly_bill(b) for b in bill_repo.get_all())
 
@@ -264,7 +285,7 @@ class SalaryView(QWidget):
                 widget.blockSignals(True)
                 widget.setValue(value)
                 widget.blockSignals(False)
-        self._recompute(self._month_picker.currentData())
+        self._recompute(self._current_key)
 
     def _on_add(self) -> None:
         dialog = IncomeDialog(self)

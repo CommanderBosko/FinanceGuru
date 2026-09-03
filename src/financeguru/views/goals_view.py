@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
+    QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -74,6 +74,12 @@ class GoalsView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._goals: list[Goal] = []
+        # The currently filtered (year, month), or None for "All". Owned
+        # locally so this view still works standalone (tests, qt-smoke);
+        # under MainWindow it's driven by the global month selector via
+        # select_month()/select_all() below. Defaults to "All", matching this
+        # tab's pre-existing standalone default.
+        self._current_key: MonthKey = None
 
         layout = QVBoxLayout(self)
 
@@ -83,11 +89,9 @@ class GoalsView(QWidget):
         self._btn_delete = QPushButton("Delete")
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
-        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
-        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
         layout.addLayout(btn_bar)
 
@@ -104,7 +108,6 @@ class GoalsView(QWidget):
         self._btn_add.clicked.connect(self._on_add)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
-        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
 
@@ -120,26 +123,43 @@ class GoalsView(QWidget):
     def refresh(self) -> None:
         self._refresh()
 
+    def month_keys(self) -> list[tuple[int, int]]:
+        """(year, month) keys this tab currently considers interesting.
+
+        Used by MainWindow to build the global month selector's entry list
+        as the union of every affected tab's own list — see `_month_entries`
+        for the actual "interesting months" rule.
+        """
+        return [key for _, key in _month_entries(goal_repo.get_all()) if key is not None]
+
+    def select_month(self, year: int, month: int, *, strict: bool = False) -> None:
+        """Programmatically select `(year, month)` as the current filter.
+
+        Used both by MainWindow's global month selector and by a Notes-tab
+        link click landing on a goal's own start month. By default, falls
+        back to "All" (None) if `(year, month)` isn't one of this tab's own
+        populated entries (see `month_keys`) — cross-tab navigation needs the
+        goal it's jumping to to always end up visible somewhere. Pass
+        `strict=True` (used only by MainWindow's global broadcast) to select
+        the literal month regardless — otherwise the toolbar could show a
+        specific month while this tab silently falls back to showing every
+        goal, a materially different, more misleading result than this tab's
+        ordinary "no goal active yet" empty state for an uninteresting month.
+        Always triggers a refresh, whether or not the key actually changed.
+        """
+        target = (year, month)
+        self._current_key = target if strict or target in self.month_keys() else None
+        self._refresh()
+
+    def select_all(self) -> None:
+        """Programmatically select "All" as the current filter."""
+        self._current_key = None
+        self._refresh()
+
     def _refresh(self) -> None:
         all_goals = goal_repo.get_all()
 
-        previous = self._month_picker.currentText()
-        entries = _month_entries(all_goals)
-        labels = [label for label, _ in entries]
-        self._month_picker.blockSignals(True)
-        self._month_picker.clear()
-        for label, key in entries:
-            self._month_picker.addItem(label, key)
-        if previous in labels:
-            self._month_picker.setCurrentIndex(labels.index(previous))
-        else:
-            # First population, or the prior selection vanished — default to
-            # "All" so opening the tab (or a fresh DB) shows every goal,
-            # unchanged from pre-filter behavior.
-            self._month_picker.setCurrentIndex(0)
-        self._month_picker.blockSignals(False)
-
-        key = self._month_picker.currentData()
+        key = self._current_key
         if key is None:
             # "All" — the full, current picture: every payment made to date.
             paid_through: dict[int, Decimal] = {}
@@ -174,26 +194,6 @@ class GoalsView(QWidget):
             self._table.setItem(row, 5, center(str(months_left), months_left))
             self._table.setItem(row, 6, right(money(monthly_savings), float(monthly_savings)))
         self._table.setSortingEnabled(True)
-
-    def select_month(self, year: int, month: int) -> None:
-        """Programmatically select `(year, month)` in the month picker.
-
-        Matches by the `(year, month)` tuple stored as each combo item's
-        data, not by label. Falls back to "All" (index 0) if `(year, month)`
-        isn't one of the picker's populated entries — cross-tab navigation
-        needs the goal it's jumping to to always end up visible somewhere.
-        Always triggers a refresh, whether or not the index actually changes.
-        """
-        target = (year, month)
-        index = 0
-        for i in range(self._month_picker.count()):
-            if self._month_picker.itemData(i) == target:
-                index = i
-                break
-        self._month_picker.blockSignals(True)
-        self._month_picker.setCurrentIndex(index)
-        self._month_picker.blockSignals(False)
-        self._refresh()
 
     def _selected_goal(self) -> Goal | None:
         row = self._table.currentRow()
