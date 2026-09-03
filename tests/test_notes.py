@@ -85,20 +85,6 @@ def test_get_by_bill_id_and_goal_id():
     assert [n.id for n in note_repo.get_by_goal_id(goal_id)] == [goal_note]
 
 
-def test_delete_for_bill_and_delete_for_goal_remove_only_linked_notes():
-    bill_id = bill_repo.add(Bill(name="Rent", amount=Decimal("1200.00"), due_day=1))
-    goal_id = goal_repo.add(Goal(name="Car", price=Decimal("500"), target_date="2026-12-31"))
-    note_repo.add(Note(body="About rent", month_year="2026-06", bill_id=bill_id))
-    note_repo.add(Note(body="About car", month_year="2026-06", goal_id=goal_id))
-    unlinked_id = note_repo.add(Note(body="Unlinked", month_year="2026-06"))
-
-    note_repo.delete_for_bill(bill_id)
-    note_repo.delete_for_goal(goal_id)
-
-    remaining = note_repo.get_for_month(2026, 6)
-    assert [n.id for n in remaining] == [unlinked_id]
-
-
 def test_deleting_linked_bill_clears_the_link_but_keeps_the_note():
     # The notes.bill_id FK is declared ON DELETE SET NULL — deleting the bill
     # directly (bypassing the view's own "delete the notes too?" prompt)

@@ -59,23 +59,6 @@ def delete(note_id: int) -> None:
         conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
 
 
-def delete_for_bill(bill_id: int) -> None:
-    """Delete every note linked to ``bill_id``.
-
-    Used when the user chooses "delete the linked notes too" while deleting a
-    Bill; if they decline, the notes stay and the FK's ON DELETE SET NULL
-    clears their link when the Bill row is removed instead.
-    """
-    with get_connection() as conn:
-        conn.execute("DELETE FROM notes WHERE bill_id=?", (bill_id,))
-
-
-def delete_for_goal(goal_id: int) -> None:
-    """Delete every note linked to ``goal_id`` (see ``delete_for_bill``)."""
-    with get_connection() as conn:
-        conn.execute("DELETE FROM notes WHERE goal_id=?", (goal_id,))
-
-
 def _row_to_note(row) -> Note:
     return Note(
         id=row["id"],

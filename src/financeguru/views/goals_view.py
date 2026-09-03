@@ -253,7 +253,12 @@ class GoalsView(QWidget):
         goal = self._selected_goal()
         if goal is None:
             return
+        # Notes can link to this goal directly (goal_id) or to its own
+        # mirrored bill (bill_id) — both disappear together when the goal
+        # is deleted, so both must count toward (and honor) the prompt below.
         linked_notes = note_repo.get_by_goal_id(goal.id) if goal.id is not None else []
+        if goal.bill_id is not None:
+            linked_notes += note_repo.get_by_bill_id(goal.bill_id)
         if not linked_notes:
             answer = QMessageBox.question(
                 self, "Delete Goal",
@@ -268,9 +273,10 @@ class GoalsView(QWidget):
             self._refresh()
             return
 
-        # Notes link to this goal — fold the choice into one dialog rather
-        # than a second popup. "No" still deletes the goal; the notes' link
-        # is left to the goal_id FK's ON DELETE SET NULL, which clears it.
+        # Notes link to this goal (directly or via its mirrored bill) — fold
+        # the choice into one dialog rather than a second popup. "No" still
+        # deletes the goal; the notes' link is left to the bill_id/goal_id
+        # FKs' ON DELETE SET NULL, which clears it.
         answer = QMessageBox.question(
             self, "Delete Goal",
             f"Delete \"{goal.name}\"? Its monthly Goal bill will also be removed.\n\n"
@@ -284,7 +290,8 @@ class GoalsView(QWidget):
         )
         if answer == QMessageBox.StandardButton.Cancel:
             return
+        delete_notes = answer == QMessageBox.StandardButton.Yes
         if goal.bill_id is not None:
-            bill_repo.delete(goal.bill_id)
-        goal_repo.delete(goal.id, delete_linked_notes=answer == QMessageBox.StandardButton.Yes)
+            bill_repo.delete(goal.bill_id, delete_linked_notes=delete_notes)
+        goal_repo.delete(goal.id, delete_linked_notes=delete_notes)
         self._refresh()

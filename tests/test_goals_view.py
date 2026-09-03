@@ -202,3 +202,38 @@ def test_delete_goal_with_linked_notes_cancel_deletes_nothing(view, monkeypatch)
 
     assert len(goal_repo.get_all()) == 1
     assert len(note_repo.get_by_goal_id(goal_id)) == 1
+
+
+def test_delete_goal_counts_and_deletes_notes_linked_via_its_mirrored_bill(view, monkeypatch):
+    # A note can link to a Goal's own auto-generated bill (via NoteDialog's
+    # "Bill" link type) instead of the Goal itself — that note must count
+    # toward, and be swept up by, the same delete-cascade prompt, since the
+    # bill disappears in the same action as the goal.
+    bill_id = bill_repo.add(Bill(name="Vacation", amount=Decimal("100"), due_day=1,
+                                  recurrence="monthly"))
+    goal_repo.add(Goal(name="Vacation", price=Decimal("400"),
+                        target_date="2026-12-31", start_date="2026-01-01", bill_id=bill_id))
+    note_repo.add(Note(body="About the vacation bill", month_year="2026-06", bill_id=bill_id))
+    view._refresh()
+
+    _delete_selected(view, monkeypatch, QMessageBox.StandardButton.Yes)
+
+    assert goal_repo.get_all() == []
+    assert note_repo.get_by_bill_id(bill_id) == []
+
+
+def test_delete_goal_no_clears_bill_linked_notes_instead_of_leaving_them_dangling(view, monkeypatch):
+    bill_id = bill_repo.add(Bill(name="Vacation", amount=Decimal("100"), due_day=1,
+                                  recurrence="monthly"))
+    goal_repo.add(Goal(name="Vacation", price=Decimal("400"),
+                        target_date="2026-12-31", start_date="2026-01-01", bill_id=bill_id))
+    note_id = note_repo.add(Note(body="About the vacation bill", month_year="2026-06",
+                                  bill_id=bill_id))
+    view._refresh()
+
+    _delete_selected(view, monkeypatch, QMessageBox.StandardButton.No)
+
+    assert goal_repo.get_all() == []
+    remaining = note_repo.get_for_month(2026, 6)
+    assert [n.id for n in remaining] == [note_id]
+    assert remaining[0].bill_id is None
