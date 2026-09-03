@@ -15,15 +15,17 @@ from PySide6.QtWidgets import QComboBox
 MonthKey = tuple[int, int] | None
 
 
-def month_entries(earliest_date: str | None) -> list[tuple[str, MonthKey]]:
+def month_entries(earliest_date: str | None, include_all: bool = True) -> list[tuple[str, MonthKey]]:
     """(label, (year, month)) pairs for a month/year picker, newest first.
 
-    The first entry is always ``("All", None)``. Then every calendar month
-    from the current month back through the month of `earliest_date` (a
+    The first entry is ``("All", None)`` unless ``include_all`` is False (the
+    Notes tab's picker omits it — every note is always filed under exactly
+    one month, so there's no unfiltered view to offer). Then every calendar
+    month from the current month back through the month of `earliest_date` (a
     "YYYY-MM..." string, or None if there's no data yet), including months
     with no activity, so the list has no gaps.
     """
-    entries: list[tuple[str, MonthKey]] = [("All", None)]
+    entries: list[tuple[str, MonthKey]] = [("All", None)] if include_all else []
     today = date.today()
     year, month = today.year, today.month
     if earliest_date:
@@ -44,16 +46,17 @@ def month_prefix(key: tuple[int, int]) -> str:
     return f"{year:04d}-{month:02d}-"
 
 
-def populate_month_picker(combo: QComboBox, earliest_date: str | None) -> None:
+def populate_month_picker(combo: QComboBox, earliest_date: str | None, include_all: bool = True) -> None:
     """Rebuild `combo` from `month_entries`, preserving the selection by label.
 
     Shared by every tab with a month/year filter dropdown (Payments, Expenses,
-    Salary, ...). Called from each view's own refresh (which already has the
-    freshest data on hand for `earliest_date`), so the list grows as new
-    history is added instead of needing a separate refresh path.
+    Salary, Notes, ...). Called from each view's own refresh (which already
+    has the freshest data on hand for `earliest_date`), so the list grows as
+    new history is added instead of needing a separate refresh path. Pass
+    ``include_all=False`` for a picker with no unfiltered view (Notes).
     """
     previous = combo.currentText()
-    entries = month_entries(earliest_date)
+    entries = month_entries(earliest_date, include_all)
     labels = [label for label, _ in entries]
 
     combo.blockSignals(True)
@@ -64,6 +67,8 @@ def populate_month_picker(combo: QComboBox, earliest_date: str | None) -> None:
         combo.setCurrentIndex(labels.index(previous))
     else:
         # First population, or the prior selection vanished — default to
-        # the current month, which is always index 1 (index 0 is "All").
-        combo.setCurrentIndex(1 if len(labels) > 1 else 0)
+        # the current month, which is always present (the range always spans
+        # down from "today"), whatever index that lands at with/without "All".
+        current_label = date.today().strftime("%B %Y")
+        combo.setCurrentIndex(labels.index(current_label) if current_label in labels else 0)
     combo.blockSignals(False)

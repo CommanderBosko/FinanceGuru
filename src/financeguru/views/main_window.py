@@ -18,6 +18,7 @@ from financeguru.views.dashboard_view import DashboardView
 from financeguru.views.debt_snowball_view import DebtSnowballView
 from financeguru.views.expenses_view import ExpensesView
 from financeguru.views.goals_view import GoalsView
+from financeguru.views.notes_view import NotesView
 from financeguru.views.payments_view import PaymentsView
 from financeguru.views.salary_view import SalaryView
 from financeguru.views.stock_tips_view import StockTipsView
@@ -51,19 +52,29 @@ class MainWindow(QMainWindow):
 
         self._dashboard = DashboardView()
         self._salary = SalaryView()
+        # Bills, Goals and Notes need direct references (not just the
+        # QTabWidget's own indexing) so a note's link indicator can switch
+        # tabs and drive the target view's month picker — see
+        # _on_notes_navigate.
+        self._bills = BillsView()
+        self._goals = GoalsView()
+        self._notes = NotesView()
         self._tabs = QTabWidget()
         # Tabs are ordered alphabetically, with Dashboard pinned first.
         self._tabs.addTab(self._dashboard, "Dashboard")
-        self._tabs.addTab(BillsView(), "Bills")
+        self._tabs.addTab(self._bills, "Bills")
         self._tabs.addTab(ChartsView(), "Charts")
         self._tabs.addTab(CurrencyConverterView(), "Currency Converter")
         self._tabs.addTab(DebtSnowballView(), "Debt Snowball")
         self._tabs.addTab(ExpensesView(), "Expenses")
-        self._tabs.addTab(GoalsView(), "Goals")
+        self._tabs.addTab(self._goals, "Goals")
         self._tabs.addTab(self._salary, "Income")
+        self._tabs.addTab(self._notes, "Notes")
         self._tabs.addTab(PaymentsView(), "Payments")
         self._tabs.addTab(StockTipsView(), "Stock Tips")
         self._tabs.addTab(StocksView(), "Stocks")
+
+        self._notes.navigate_requested.connect(self._on_notes_navigate)
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self._tabs)
@@ -153,6 +164,19 @@ class MainWindow(QMainWindow):
             widget = self._tabs.widget(i)
             if hasattr(widget, "refresh"):
                 widget.refresh()
+
+    def _on_notes_navigate(self, target: str, year: int, month: int) -> None:
+        # A note's link indicator was clicked — jump to the linked Bill's or
+        # Goal's own tab and month (select_month falls back to "All" on
+        # either view if that exact month isn't one of its populated entries).
+        # The tab switch is done with signals blocked so _on_tab_changed's own
+        # refresh() doesn't fire — select_month below already refreshes with
+        # the right month, and doing both would be two DB round-trips per click.
+        view = self._bills if target == "bills" else self._goals
+        self._tabs.blockSignals(True)
+        self._tabs.setCurrentWidget(view)
+        self._tabs.blockSignals(False)
+        view.select_month(year, month)
 
     def _on_tab_changed(self, index: int) -> None:
         # Refresh views whose figures depend on data edited in other tabs.

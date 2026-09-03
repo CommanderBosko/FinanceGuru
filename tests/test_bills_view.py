@@ -10,11 +10,14 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from PySide6.QtWidgets import QMessageBox
 
 from financeguru.models.bill import Bill
 from financeguru.models.goal import Goal
+from financeguru.models.note import Note
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
+from financeguru.repositories import notes as note_repo
 from financeguru.views.bills_view import BillsView
 
 
@@ -146,6 +149,69 @@ def test_month_entries_include_goal_and_one_time_months(view):
     assert "March 2027" in labels      # one-time bill's due month
     assert "August 2026" in labels     # goal start_date
     assert "December 2026" in labels   # goal target_date
+
+
+def test_select_month_selects_populated_month_and_falls_back_to_all(view):
+    bill_repo.add(Bill(name="Car Registration", amount=Decimal("200"), due_day=10,
+                        due_month=9, recurrence="yearly"))
+    view._refresh()
+
+    view.select_month(2026, 9)
+    assert view._month_picker.currentText() == "September 2026"
+    assert "Car Registration" in _names(view)
+
+    view.select_month(2099, 1)
+    assert view._month_picker.currentText() == "All"
+    assert "Car Registration" in _names(view)
+
+
+def _delete_selected(view, monkeypatch, answer) -> None:
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: answer)
+    view._table.selectRow(0)
+    view._on_delete()
+
+
+def test_delete_with_no_linked_notes_is_unchanged(view, monkeypatch):
+    bill_repo.add(Bill(name="Rent", amount=Decimal("1000"), due_day=1))
+    view._refresh()
+
+    _delete_selected(view, monkeypatch, QMessageBox.StandardButton.Yes)
+    assert bill_repo.get_all() == []
+
+
+def test_delete_bill_with_linked_notes_yes_deletes_both(view, monkeypatch):
+    bill_id = bill_repo.add(Bill(name="Rent", amount=Decimal("1000"), due_day=1))
+    note_repo.add(Note(body="About rent", month_year="2026-06", bill_id=bill_id))
+    view._refresh()
+
+    _delete_selected(view, monkeypatch, QMessageBox.StandardButton.Yes)
+
+    assert bill_repo.get_all() == []
+    assert note_repo.get_by_bill_id(bill_id) == []
+
+
+def test_delete_bill_with_linked_notes_no_keeps_notes_and_clears_link(view, monkeypatch):
+    bill_id = bill_repo.add(Bill(name="Rent", amount=Decimal("1000"), due_day=1))
+    note_id = note_repo.add(Note(body="About rent", month_year="2026-06", bill_id=bill_id))
+    view._refresh()
+
+    _delete_selected(view, monkeypatch, QMessageBox.StandardButton.No)
+
+    assert bill_repo.get_all() == []
+    remaining = note_repo.get_for_month(2026, 6)
+    assert [n.id for n in remaining] == [note_id]
+    assert remaining[0].bill_id is None
+
+
+def test_delete_bill_with_linked_notes_cancel_deletes_nothing(view, monkeypatch):
+    bill_id = bill_repo.add(Bill(name="Rent", amount=Decimal("1000"), due_day=1))
+    note_repo.add(Note(body="About rent", month_year="2026-06", bill_id=bill_id))
+    view._refresh()
+
+    _delete_selected(view, monkeypatch, QMessageBox.StandardButton.Cancel)
+
+    assert len(bill_repo.get_all()) == 1
+    assert len(note_repo.get_by_bill_id(bill_id)) == 1
 
 
 def test_falls_back_to_current_month_when_selection_vanishes(view):

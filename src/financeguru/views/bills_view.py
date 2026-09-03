@@ -11,6 +11,7 @@ from financeguru.models.goal import Goal
 from financeguru.models.payment import Payment
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
+from financeguru.repositories import notes as note_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.bill_dialog import BillDialog
 from financeguru.views.context_menu import attach_row_menu
@@ -129,6 +130,27 @@ class BillsView(QWidget):
     def refresh(self) -> None:
         self._refresh()
 
+    def select_month(self, year: int, month: int) -> None:
+        """Programmatically select (year, month) in the month picker.
+
+        Used by a Notes-tab link click to land on the bill's own due month.
+        Matches by the (year, month) tuple stored as each combo item's data.
+        Falls back to "All" (index 0) if that exact month isn't one of this
+        picker's populated entries, so the caller is never left on a dead
+        selection. Always triggers exactly one refresh — mirrors GoalsView's
+        select_month so the two don't drift on this mechanic.
+        """
+        target = (year, month)
+        index = 0
+        for i in range(self._month_picker.count()):
+            if self._month_picker.itemData(i) == target:
+                index = i
+                break
+        self._month_picker.blockSignals(True)
+        self._month_picker.setCurrentIndex(index)
+        self._month_picker.blockSignals(False)
+        self._refresh()
+
     def _refresh(self) -> None:
         all_bills = bill_repo.get_all()
         goals = goal_repo.get_all()
@@ -200,15 +222,38 @@ class BillsView(QWidget):
         bill = self._selected_bill()
         if bill is None:
             return
+        linked_notes = note_repo.get_by_bill_id(bill.id) if bill.id is not None else []
+        if not linked_notes:
+            answer = QMessageBox.question(
+                self,
+                "Delete Bill",
+                f"Delete '{bill.name}'? All associated payments will also be removed.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                bill_repo.delete(bill.id)
+                self._refresh()
+            return
+
+        # Notes link to this bill — fold the choice into one dialog rather
+        # than a second popup. "No" still deletes the bill; the notes' link
+        # is left to the bill_id FK's ON DELETE SET NULL, which clears it.
         answer = QMessageBox.question(
             self,
             "Delete Bill",
-            f"Delete '{bill.name}'? All associated payments will also be removed.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            f"Delete '{bill.name}'? All associated payments will also be removed.\n\n"
+            f"{len(linked_notes)} note(s) are linked to this bill.\n\n"
+            "Yes — delete the bill and those notes.\n"
+            "No — delete the bill and keep the notes (their link will be cleared).\n"
+            "Cancel — don't delete anything.",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
         )
-        if answer == QMessageBox.StandardButton.Yes:
-            bill_repo.delete(bill.id)
-            self._refresh()
+        if answer == QMessageBox.StandardButton.Cancel:
+            return
+        bill_repo.delete(bill.id, delete_linked_notes=answer == QMessageBox.StandardButton.Yes)
+        self._refresh()
 
     def _on_pay(self) -> None:
         bill = self._selected_bill()

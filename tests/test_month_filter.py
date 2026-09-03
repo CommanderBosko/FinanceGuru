@@ -63,3 +63,32 @@ def test_falls_back_to_current_month_when_previous_selection_vanishes(qapp):
     populate_month_picker(combo, date.today().isoformat())
     assert combo.currentIndex() == 1
     assert combo.currentText() == date.today().strftime("%B %Y")
+
+
+# --- include_all=False (the Notes tab's picker) -----------------------------
+
+def test_include_all_false_omits_the_all_entry(qapp):
+    combo = QComboBox()
+    populate_month_picker(combo, "2025-01-15", include_all=False)
+
+    labels = [combo.itemText(i) for i in range(combo.count())]
+    assert "All" not in labels
+    assert labels[0] == date.today().strftime("%B %Y")
+    assert labels[-1] == "January 2025"
+
+
+def test_include_all_false_defaults_to_current_month_at_index_zero(qapp):
+    combo = QComboBox()
+    populate_month_picker(combo, None, include_all=False)
+    assert combo.currentIndex() == 0
+    assert combo.currentText() == date.today().strftime("%B %Y")
+
+
+def test_include_all_false_preserves_selection_across_repopulation(qapp):
+    combo = QComboBox()
+    populate_month_picker(combo, "2025-01-15", include_all=False)
+    labels = [combo.itemText(i) for i in range(combo.count())]
+    combo.setCurrentIndex(labels.index("January 2025"))
+
+    populate_month_picker(combo, "2025-01-15", include_all=False)
+    assert combo.currentText() == "January 2025"
