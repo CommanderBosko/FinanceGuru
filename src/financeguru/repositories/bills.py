@@ -45,12 +45,22 @@ def update(bill: Bill) -> None:
         )
 
 
-def delete(bill_id: int) -> None:
+def delete(bill_id: int, delete_linked_notes: bool = False) -> None:
+    """Delete a bill and its payments in one transaction.
+
+    ``delete_linked_notes=True`` also deletes any notes linked to this bill in
+    the same transaction (the caller — BillsView's delete-cascade prompt —
+    has already asked the user). Left False (the default, and every other
+    call site), a linked note survives with its link cleared by the
+    ``notes.bill_id`` FK's ON DELETE SET NULL once the bill row is gone.
+    """
     with get_connection() as conn:
         # New DBs declare the FK with ON DELETE CASCADE, but databases created
         # before that change keep the old constraint, so delete children
         # explicitly to stay correct across both.
         conn.execute("DELETE FROM payments WHERE bill_id=?", (bill_id,))
+        if delete_linked_notes:
+            conn.execute("DELETE FROM notes WHERE bill_id=?", (bill_id,))
         conn.execute("DELETE FROM bills WHERE id=?", (bill_id,))
 
 

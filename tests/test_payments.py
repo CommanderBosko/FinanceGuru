@@ -70,6 +70,27 @@ def test_total_paid_by_bill_sums_per_bill():
     assert totals == {a: Decimal("160.00"), b: Decimal("40.00")}
 
 
+def test_total_paid_by_bill_through_excludes_on_and_after_cutoff():
+    a = _bill()
+    b = bills.add(Bill(name="Water", amount=Decimal("40.00"), due_day=10))
+    payments.add(Payment(amount=Decimal("80.00"), paid_date="2026-05-01", bill_id=a))
+    payments.add(Payment(amount=Decimal("80.00"), paid_date="2026-05-31", bill_id=a))
+    # On the cutoff date itself — must be excluded ("strictly before").
+    payments.add(Payment(amount=Decimal("80.00"), paid_date="2026-06-01", bill_id=a))
+    # After the cutoff — also excluded.
+    payments.add(Payment(amount=Decimal("80.00"), paid_date="2026-07-01", bill_id=a))
+    payments.add(Payment(amount=Decimal("40.00"), paid_date="2026-05-15", bill_id=b))
+
+    totals = payments.total_paid_by_bill_through("2026-06-01")
+    assert totals == {a: Decimal("160.00"), b: Decimal("40.00")}
+
+
+def test_total_paid_by_bill_through_empty_when_all_payments_after_cutoff():
+    a = _bill()
+    payments.add(Payment(amount=Decimal("80.00"), paid_date="2026-06-01", bill_id=a))
+    assert payments.total_paid_by_bill_through("2026-01-01") == {}
+
+
 def test_latest_paid_dates_empty_when_no_payments():
     _bill()
     assert payments.latest_paid_dates() == {}
