@@ -93,10 +93,13 @@ def populate_from_keys(combo: QComboBox, keys: set[tuple[int, int]] | list[tuple
 def populate_month_picker(combo: QComboBox, earliest_date: str | None, include_all: bool = True) -> None:
     """Rebuild `combo` from `month_entries`, preserving the selection by label.
 
-    Shared by every tab with a month/year filter dropdown (Payments, Expenses,
-    Salary, Notes, ...). Called from each view's own refresh (which already
-    has the freshest data on hand for `earliest_date`), so the list grows as
-    new history is added instead of needing a separate refresh path. Pass
-    ``include_all=False`` for a picker with no unfiltered view (Notes).
+    No longer called by any view directly — Payments/Expenses/Salary/Notes
+    each moved to the global month selector (see MainWindow), so they no
+    longer own a combo of their own to populate; they call `month_entries()`
+    directly instead, just for its list of keys. Kept (and still exercised by
+    test_month_filter.py) as a general "build/refresh a month+All combo from
+    an earliest-record date" utility, should something need one again — a
+    standalone dialog, a future tab, etc. Pass ``include_all=False`` for a
+    picker with no unfiltered view (see `month_entries`).
     """
     _repopulate(combo, month_entries(earliest_date, include_all))

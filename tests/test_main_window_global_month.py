@@ -197,6 +197,42 @@ def test_notes_link_navigation_syncs_the_global_display_without_double_refresh(w
     assert window._month_picker.currentData() == (today.year, today.month)
 
 
+def test_notes_link_navigation_propagates_the_new_month_to_every_other_tab(window):
+    # Regression: a note link to a Bill/Goal due in a DIFFERENT month than the
+    # one currently selected used to update the destination tab and the
+    # toolbar's own display, but leave every other consumer (Notes itself
+    # included) filtering on the stale old key — nothing would notice on the
+    # next tab switch, since _rebuild_month_list's change-detection compares
+    # the toolbar's own already-synced value against itself.
+    bill_id = bill_repo.add(Bill(name="Registration", amount=Decimal("50"), due_day=1,
+                                  due_month=9, recurrence="yearly"))
+    note_repo.add(Note(body="About registration", month_year="2026-03", bill_id=bill_id))
+    window._notes.select_month(2026, 3)
+    window._rebuild_month_list()
+
+    button = window._notes._table.cellWidget(0, 2)
+    assert button is not None
+    button.click()
+
+    # Mirrors _bill_target_month's own "hasn't passed yet" rule for a yearly
+    # bill (see notes_view.py) rather than hardcoding a year.
+    today = date.today()
+    target_year = today.year if 9 >= today.month else today.year + 1
+    target = (target_year, 9)
+    assert window._bills._current_key == target
+    assert window._month_picker.currentData() == target
+    # Every other month-aware tab — Notes included, even though it's the tab
+    # the click originated from and isn't the navigation's destination —
+    # must agree with the toolbar, not keep showing where it was before.
+    assert window._notes._current_key == target
+    assert window._payments._current_key == target
+    assert window._expenses._current_key == target
+    assert window._salary._current_key == target
+    assert window._goals._current_key == target
+    assert window._charts._current_key == target
+    assert window._stock_tips._current_key == target
+
+
 def test_rebuild_month_list_is_a_noop_when_the_selection_is_unaffected(window, monkeypatch):
     # Rebuilding on every tab switch must not refresh every consumer tab
     # unless the selection actually needs to change.

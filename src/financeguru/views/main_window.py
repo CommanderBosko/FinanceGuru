@@ -213,12 +213,17 @@ class MainWindow(QMainWindow):
         self._tabs.setCurrentWidget(view)
         self._tabs.blockSignals(False)
         view.select_month(year, month)
-        # Reflect the (possibly-fallen-back-to-All) result in the global
-        # picker too, so it never shows a month the visible tab has already
-        # moved on from. This only updates the picker's own display — it
-        # must NOT re-broadcast to every other tab, which already refreshed
-        # exactly once above and would otherwise refresh again for nothing.
+        # Propagate the resolved month (or "All", if select_month fell back)
+        # to the toolbar's own display AND every other month-aware tab —
+        # otherwise a tab that isn't currently visible (Notes included) keeps
+        # filtering on its old key even though the toolbar now shows
+        # something else, and nothing ever notices: _rebuild_month_list's
+        # change-detection compares the toolbar's own (already-synced) value
+        # against itself on the next tab switch and sees no change to
+        # broadcast. `skip=view` avoids redriving the just-navigated-to tab
+        # a second time (it already refreshed exactly once, above).
         self._sync_global_display(view._current_key)
+        self._broadcast_month(view._current_key, skip=view)
 
     def _on_tab_changed(self, index: int) -> None:
         # Refresh views whose figures depend on data edited in other tabs.
@@ -275,15 +280,19 @@ class MainWindow(QMainWindow):
         if new_key != previous_key:
             self._broadcast_month(new_key)
 
-    def _broadcast_month(self, key: tuple[int, int] | None) -> None:
+    def _broadcast_month(self, key: tuple[int, int] | None, skip=None) -> None:
         """Push the global month/"All" selection to every tab it drives.
 
         A view with no select_all() (Notes, Charts' pie chart) can't render
         "All" as content, so a global "All" is simply never forwarded to it
-        — it keeps showing whichever specific month it was last on.
+        — it keeps showing whichever specific month it was last on. Pass
+        `skip` (a view instance) to omit one tab that the caller has already
+        driven to this exact key itself, so it isn't refreshed twice.
         """
         for attr in self._MONTH_AWARE_ATTRS:
             view = getattr(self, attr)
+            if view is skip:
+                continue
             if key is None:
                 if hasattr(view, "select_all"):
                     view.select_all()
