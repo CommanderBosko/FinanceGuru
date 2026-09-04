@@ -2,7 +2,8 @@ from datetime import date
 from decimal import Decimal
 
 from financeguru.models.bill import Bill
-from financeguru.repositories import bills
+from financeguru.models.note import Note
+from financeguru.repositories import bills, notes
 
 
 def _sample(name: str = "Rent", amount: Decimal = Decimal("1200.00"),
@@ -212,3 +213,24 @@ def test_category_round_trips_and_defaults_to_other():
     bills.update(bill)
     reloaded = next(b for b in bills.get_all() if b.id == cat_id)
     assert reloaded.category == "Internet & Phone"
+
+
+def test_delete_default_leaves_linked_notes_with_link_cleared():
+    bill_id = bills.add(_sample())
+    note_id = notes.add(Note(body="About the bill", month_year="2026-06", bill_id=bill_id))
+
+    bills.delete(bill_id)
+
+    note = notes.get_for_month(2026, 6)[0]
+    assert note.id == note_id
+    assert note.bill_id is None
+
+
+def test_delete_with_delete_linked_notes_removes_them_atomically():
+    bill_id = bills.add(_sample())
+    notes.add(Note(body="About the bill", month_year="2026-06", bill_id=bill_id))
+
+    bills.delete(bill_id, delete_linked_notes=True)
+
+    assert bills.get_all() == []
+    assert notes.get_by_bill_id(bill_id) == []

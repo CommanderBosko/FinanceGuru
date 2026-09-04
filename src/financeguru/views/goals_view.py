@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -12,6 +13,7 @@ from financeguru.models.goal import Goal, months_remaining
 from financeguru.money import ZERO
 from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
+from financeguru.repositories import notes as note_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
@@ -19,11 +21,65 @@ from financeguru.views.goal_dialog import GoalDialog
 
 _COLS = ["Goal", "Price", "Amount Left", "Start Date", "Afford By", "Months Left", "Save / Month"]
 
+MonthKey = tuple[int, int] | None
+
+
+def _month_entries(goals: list[Goal]) -> list[tuple[str, MonthKey]]:
+    """(label, (year, month)) pairs for the Goals tab's month picker.
+
+    Unlike Bills' picker (which also has to account for one-time/yearly due
+    months), a Goal has exactly one date that gates its visibility — its
+    start_date, since a goal can't be shown before it exists — so the window
+    is just the union of the current month and every goal's start_date month.
+    Always includes the current month so the picker never starts empty on a
+    fresh database. Sorted oldest-first, matching Bills' picker.
+    """
+    today = date.today()
+    months = {(today.year, today.month)}
+    for goal in goals:
+        d = date.fromisoformat(goal.start_date)
+        months.add((d.year, d.month))
+    entries: list[tuple[str, MonthKey]] = [("All", None)]
+    entries += [(date(y, m, 1).strftime("%B %Y"), (y, m)) for y, m in sorted(months)]
+    return entries
+
+
+def _visible_in_month(goal: Goal, key: MonthKey, paid_through: dict[int, Decimal]) -> bool:
+    """Whether `goal` belongs on the Goals tab for the selected month.
+
+    `key` of None is "All" — unfiltered, matching the tab's historical
+    behavior. Otherwise a goal must (a) have already started by the selected
+    month, and (b) still have a balance greater than zero as of the start of
+    that month — i.e. what was paid toward its bill strictly before that
+    month began hadn't yet covered its price. Condition (b) alone is enough
+    to both surface a goal in the month it finishes (its balance-before was
+    still positive even if a payment during the month fully funds it) and
+    drop it the month after, so no separate "completion month" branch is
+    needed. This is deliberately not the same rule as Bills' `_visible_in_month`
+    for a goal's mirrored bill — Bills has no funded/unfunded cutoff, since a
+    bill you still have doesn't stop being a bill just because its linked
+    goal is paid off.
+    """
+    if key is None:
+        return True
+    year, month = key
+    start_date = date.fromisoformat(goal.start_date)
+    if (year, month) < (start_date.year, start_date.month):
+        return False
+    contributed = paid_through.get(goal.bill_id, ZERO) if goal.bill_id is not None else ZERO
+    return goal.price - contributed > ZERO
+
 
 class GoalsView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._goals: list[Goal] = []
+        # The currently filtered (year, month), or None for "All". Owned
+        # locally so this view still works standalone (tests, qt-smoke);
+        # under MainWindow it's driven by the global month selector via
+        # select_month()/select_all() below. Defaults to "All", matching this
+        # tab's pre-existing standalone default.
+        self._current_key: MonthKey = None
 
         layout = QVBoxLayout(self)
 
@@ -67,9 +123,58 @@ class GoalsView(QWidget):
     def refresh(self) -> None:
         self._refresh()
 
+    def month_keys(self) -> list[tuple[int, int]]:
+        """(year, month) keys this tab currently considers interesting.
+
+        Used by MainWindow to build the global month selector's entry list
+        as the union of every affected tab's own list — see `_month_entries`
+        for the actual "interesting months" rule.
+        """
+        return [key for _, key in _month_entries(goal_repo.get_all()) if key is not None]
+
+    def select_month(self, year: int, month: int, *, strict: bool = False) -> None:
+        """Programmatically select `(year, month)` as the current filter.
+
+        Used both by MainWindow's global month selector and by a Notes-tab
+        link click landing on a goal's own start month. By default, falls
+        back to "All" (None) if `(year, month)` isn't one of this tab's own
+        populated entries (see `month_keys`) — cross-tab navigation needs the
+        goal it's jumping to to always end up visible somewhere. Pass
+        `strict=True` (used only by MainWindow's global broadcast) to select
+        the literal month regardless — otherwise the toolbar could show a
+        specific month while this tab silently falls back to showing every
+        goal, a materially different, more misleading result than this tab's
+        ordinary "no goal active yet" empty state for an uninteresting month.
+        Always triggers a refresh, whether or not the key actually changed.
+        """
+        target = (year, month)
+        self._current_key = target if strict or target in self.month_keys() else None
+        self._refresh()
+
+    def select_all(self) -> None:
+        """Programmatically select "All" as the current filter."""
+        self._current_key = None
+        self._refresh()
+
     def _refresh(self) -> None:
-        self._goals = goal_repo.get_all()
-        paid = payment_repo.total_paid_by_bill()
+        all_goals = goal_repo.get_all()
+
+        key = self._current_key
+        if key is None:
+            # "All" — the full, current picture: every payment made to date.
+            paid_through: dict[int, Decimal] = {}
+            paid = payment_repo.total_paid_by_bill()
+        else:
+            # A specific month — "Amount Left" must reflect the balance as of
+            # that month, the same paid_through figure _visible_in_month used
+            # to decide the goal belongs here, not today's all-time total (or
+            # a fully-funded goal would misleadingly show $0 left in a past
+            # month it hadn't finished funding yet).
+            year, month = key
+            paid_through = payment_repo.total_paid_by_bill_through(f"{year:04d}-{month:02d}-01")
+            paid = paid_through
+        self._goals = [g for g in all_goals if _visible_in_month(g, key, paid_through)]
+
         self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._goals))
         for row, goal in enumerate(self._goals):
@@ -148,14 +253,45 @@ class GoalsView(QWidget):
         goal = self._selected_goal()
         if goal is None:
             return
+        # Notes can link to this goal directly (goal_id) or to its own
+        # mirrored bill (bill_id) — both disappear together when the goal
+        # is deleted, so both must count toward (and honor) the prompt below.
+        linked_notes = note_repo.get_by_goal_id(goal.id) if goal.id is not None else []
+        if goal.bill_id is not None:
+            linked_notes += note_repo.get_by_bill_id(goal.bill_id)
+        if not linked_notes:
+            answer = QMessageBox.question(
+                self, "Delete Goal",
+                f"Delete \"{goal.name}\"? Its monthly Goal bill will also be removed.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            if goal.bill_id is not None:
+                bill_repo.delete(goal.bill_id)
+            goal_repo.delete(goal.id)
+            self._refresh()
+            return
+
+        # Notes link to this goal (directly or via its mirrored bill) — fold
+        # the choice into one dialog rather than a second popup. "No" still
+        # deletes the goal; the notes' link is left to the bill_id/goal_id
+        # FKs' ON DELETE SET NULL, which clears it.
         answer = QMessageBox.question(
             self, "Delete Goal",
-            f"Delete \"{goal.name}\"? Its monthly Goal bill will also be removed.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            f"Delete \"{goal.name}\"? Its monthly Goal bill will also be removed.\n\n"
+            f"{len(linked_notes)} note(s) are linked to this goal.\n\n"
+            "Yes — delete the goal and those notes.\n"
+            "No — delete the goal and keep the notes (their link will be cleared).\n"
+            "Cancel — don't delete anything.",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
         )
-        if answer != QMessageBox.StandardButton.Yes:
+        if answer == QMessageBox.StandardButton.Cancel:
             return
+        delete_notes = answer == QMessageBox.StandardButton.Yes
         if goal.bill_id is not None:
-            bill_repo.delete(goal.bill_id)
-        goal_repo.delete(goal.id)
+            bill_repo.delete(goal.bill_id, delete_linked_notes=delete_notes)
+        goal_repo.delete(goal.id, delete_linked_notes=delete_notes)
         self._refresh()

@@ -2,7 +2,8 @@ from decimal import Decimal
 
 from financeguru.models.bill import Bill
 from financeguru.models.goal import Goal
-from financeguru.repositories import bills, goals
+from financeguru.models.note import Note
+from financeguru.repositories import bills, goals, notes
 
 
 def test_add_and_round_trip():
@@ -41,6 +42,27 @@ def test_update_and_delete():
 
     goals.delete(gid)
     assert goals.get_all() == []
+
+
+def test_delete_default_leaves_linked_notes_with_link_cleared():
+    gid = goals.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31"))
+    note_id = notes.add(Note(body="About the car goal", month_year="2026-06", goal_id=gid))
+
+    goals.delete(gid)
+
+    note = notes.get_for_month(2026, 6)[0]
+    assert note.id == note_id
+    assert note.goal_id is None
+
+
+def test_delete_with_delete_linked_notes_removes_them_atomically():
+    gid = goals.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31"))
+    notes.add(Note(body="About the car goal", month_year="2026-06", goal_id=gid))
+
+    goals.delete(gid, delete_linked_notes=True)
+
+    assert goals.get_all() == []
+    assert notes.get_by_goal_id(gid) == []
 
 
 def test_deleting_linked_bill_sets_goal_bill_id_null():

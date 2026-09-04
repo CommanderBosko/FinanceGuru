@@ -57,6 +57,22 @@ def total_paid_by_bill() -> dict[int, Decimal]:
     return {row["bill_id"]: to_decimal(row["total"]) for row in rows}
 
 
+def total_paid_by_bill_through(cutoff_date: str) -> dict[int, Decimal]:
+    """Sum of payments made strictly before `cutoff_date` (an ISO "YYYY-MM-DD"), keyed by bill_id.
+
+    Used by the Goals tab's month filter to compute a goal's remaining balance
+    as of the start of a given month, so a goal drops off the list once it was
+    already fully funded before that month began.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT bill_id, SUM(amount) AS total FROM payments"
+            " WHERE bill_id IS NOT NULL AND paid_date < ? GROUP BY bill_id",
+            (cutoff_date,),
+        ).fetchall()
+    return {row["bill_id"]: to_decimal(row["total"]) for row in rows}
+
+
 def latest_paid_dates() -> dict[int, str]:
     """Most recent paid_date per bill, keyed by bill_id.
 

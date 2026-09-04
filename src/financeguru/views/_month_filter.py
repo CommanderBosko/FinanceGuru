@@ -15,15 +15,17 @@ from PySide6.QtWidgets import QComboBox
 MonthKey = tuple[int, int] | None
 
 
-def month_entries(earliest_date: str | None) -> list[tuple[str, MonthKey]]:
+def month_entries(earliest_date: str | None, include_all: bool = True) -> list[tuple[str, MonthKey]]:
     """(label, (year, month)) pairs for a month/year picker, newest first.
 
-    The first entry is always ``("All", None)``. Then every calendar month
-    from the current month back through the month of `earliest_date` (a
+    The first entry is ``("All", None)`` unless ``include_all`` is False (the
+    Notes tab's picker omits it — every note is always filed under exactly
+    one month, so there's no unfiltered view to offer). Then every calendar
+    month from the current month back through the month of `earliest_date` (a
     "YYYY-MM..." string, or None if there's no data yet), including months
     with no activity, so the list has no gaps.
     """
-    entries: list[tuple[str, MonthKey]] = [("All", None)]
+    entries: list[tuple[str, MonthKey]] = [("All", None)] if include_all else []
     today = date.today()
     year, month = today.year, today.month
     if earliest_date:
@@ -44,16 +46,17 @@ def month_prefix(key: tuple[int, int]) -> str:
     return f"{year:04d}-{month:02d}-"
 
 
-def populate_month_picker(combo: QComboBox, earliest_date: str | None) -> None:
-    """Rebuild `combo` from `month_entries`, preserving the selection by label.
+def _repopulate(combo: QComboBox, entries: list[tuple[str, MonthKey]]) -> None:
+    """Rebuild `combo` from `entries` ([(label, key), ...]), preserving the
+    selection by label: unchanged if the previous label survives,
+    otherwise defaulting to the current month if present, else index 0.
 
-    Shared by every tab with a month/year filter dropdown (Payments, Expenses,
-    Salary, ...). Called from each view's own refresh (which already has the
-    freshest data on hand for `earliest_date`), so the list grows as new
-    history is added instead of needing a separate refresh path.
+    Shared by `populate_month_picker` and `populate_from_keys` so the two
+    can't drift on this mechanic — they differ only in how `entries` itself
+    is built (a contiguous earliest-to-today range vs. an arbitrary union of
+    keys), not in how selection is preserved or defaulted.
     """
     previous = combo.currentText()
-    entries = month_entries(earliest_date)
     labels = [label for label, _ in entries]
 
     combo.blockSignals(True)
@@ -64,6 +67,39 @@ def populate_month_picker(combo: QComboBox, earliest_date: str | None) -> None:
         combo.setCurrentIndex(labels.index(previous))
     else:
         # First population, or the prior selection vanished — default to
-        # the current month, which is always index 1 (index 0 is "All").
-        combo.setCurrentIndex(1 if len(labels) > 1 else 0)
+        # the current month, which every caller of this helper seeds
+        # somehow, whatever index that lands at with/without "All".
+        current_label = date.today().strftime("%B %Y")
+        combo.setCurrentIndex(labels.index(current_label) if current_label in labels else 0)
     combo.blockSignals(False)
+
+
+def populate_from_keys(combo: QComboBox, keys: set[tuple[int, int]] | list[tuple[int, int]]) -> None:
+    """Rebuild `combo` from an arbitrary collection of (year, month) keys.
+
+    Used by MainWindow's global month selector, whose entries are the UNION
+    of every affected tab's own "interesting months" logic — not a single
+    contiguous earliest-to-today range like `month_entries` builds, so gaps
+    (e.g. a lone future one-time bill's due month) are expected and kept,
+    not filled in. Always includes "All" first, then every key sorted
+    newest-first.
+    """
+    ordered = sorted(set(keys), reverse=True)
+    entries: list[tuple[str, MonthKey]] = [("All", None)]
+    entries += [(date(y, m, 1).strftime("%B %Y"), (y, m)) for y, m in ordered]
+    _repopulate(combo, entries)
+
+
+def populate_month_picker(combo: QComboBox, earliest_date: str | None, include_all: bool = True) -> None:
+    """Rebuild `combo` from `month_entries`, preserving the selection by label.
+
+    No longer called by any view directly — Payments/Expenses/Salary/Notes
+    each moved to the global month selector (see MainWindow), so they no
+    longer own a combo of their own to populate; they call `month_entries()`
+    directly instead, just for its list of keys. Kept (and still exercised by
+    test_month_filter.py) as a general "build/refresh a month+All combo from
+    an earliest-record date" utility, should something need one again — a
+    standalone dialog, a future tab, etc. Pass ``include_all=False`` for a
+    picker with no unfiltered view (see `month_entries`).
+    """
+    _repopulate(combo, month_entries(earliest_date, include_all))

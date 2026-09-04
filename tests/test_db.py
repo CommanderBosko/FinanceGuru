@@ -12,8 +12,10 @@ import pytest
 import financeguru.db as db
 from financeguru.db import _CORE_TABLES, _csv_safe
 from financeguru.models.bill import Bill
+from financeguru.models.goal import Goal
+from financeguru.models.note import Note
 from financeguru.models.payment import Payment
-from financeguru.repositories import bills, payments
+from financeguru.repositories import bills, goals, notes, payments
 
 
 def _assert_owner_only_mode(path, expected: str) -> None:
@@ -328,6 +330,59 @@ def test_ensure_column_adds_category_to_a_legacy_bills_table():
 
 def test_expenses_is_a_core_table():
     assert "expenses" in _CORE_TABLES
+
+
+# --- notes table -------------------------------------------------------------
+
+def test_notes_table_exists_on_a_fresh_db():
+    with db.get_connection() as conn:
+        row = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='notes'"
+        ).fetchone()
+    assert row is not None
+
+
+def test_notes_is_not_a_core_table():
+    # A brand new table added after existing backups were made — requiring it
+    # on restore would reject those older, still-valid backups. Same
+    # reasoning as snapshots/currency_rates (see their comments in db.py).
+    assert "notes" not in _CORE_TABLES
+
+
+def test_init_db_is_idempotent_against_an_existing_notes_table():
+    note_id = notes.add(Note(body="Keep me", month_year="2026-06"))
+    db.init_db()
+    remaining = notes.get_for_month(2026, 6)
+    assert [n.id for n in remaining] == [note_id]
+
+
+def test_deleting_linked_bill_clears_notes_link_via_fk():
+    bill_id = bills.add(Bill(name="Rent", amount=Decimal("1200.00"), due_day=1))
+    note_id = notes.add(Note(body="About rent", month_year="2026-06", bill_id=bill_id))
+    bills.delete(bill_id)
+    note = notes.get_for_month(2026, 6)[0]
+    assert note.id == note_id
+    assert note.bill_id is None
+
+
+def test_deleting_linked_goal_clears_notes_link_via_fk():
+    goal_id = goals.add(Goal(name="Car", price=Decimal("500"), target_date="2026-12-31"))
+    note_id = notes.add(Note(body="About car", month_year="2026-06", goal_id=goal_id))
+    goals.delete(goal_id)
+    note = notes.get_for_month(2026, 6)[0]
+    assert note.id == note_id
+    assert note.goal_id is None
+
+
+def test_notes_check_constraint_rejects_both_links_at_once():
+    bill_id = bills.add(Bill(name="Rent", amount=Decimal("1200.00"), due_day=1))
+    goal_id = goals.add(Goal(name="Car", price=Decimal("500"), target_date="2026-12-31"))
+    with db.get_connection() as conn, pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO notes (month_year, created_at, body, bill_id, goal_id)"
+            " VALUES ('2026-06', '2026-06-01T00:00:00', 'both', ?, ?)",
+            (bill_id, goal_id),
+        )
 
 
 def test_export_writes_a_csv_for_the_expenses_table(tmp_path):

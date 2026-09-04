@@ -1,13 +1,15 @@
+from datetime import date
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton,
+    QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from financeguru.repositories import payments as payment_repo
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.payment_dialog import PaymentDialog
-from financeguru.views._month_filter import month_prefix, populate_month_picker
+from financeguru.views._month_filter import MonthKey, month_entries, month_prefix
 from financeguru.views._table import center, money, right
 
 
@@ -15,6 +17,11 @@ class PaymentsView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._rows: list[dict] = []
+        # The currently filtered (year, month), or None for "All". Owned
+        # locally so this view still works standalone (tests, qt-smoke); under
+        # MainWindow it's driven by the global month selector via
+        # select_month()/select_all() below.
+        self._current_key: MonthKey = (date.today().year, date.today().month)
 
         layout = QVBoxLayout(self)
 
@@ -24,11 +31,9 @@ class PaymentsView(QWidget):
         self._btn_delete = QPushButton("Delete")
         for btn in (self._btn_edit, self._btn_delete):
             btn.setEnabled(False)
-        self._month_picker = QComboBox()
         btn_bar.addWidget(self._btn_add)
         btn_bar.addWidget(self._btn_edit)
         btn_bar.addWidget(self._btn_delete)
-        btn_bar.addWidget(self._month_picker)
         btn_bar.addStretch()
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search bills, amounts, dates, notes…")
@@ -50,7 +55,6 @@ class PaymentsView(QWidget):
         self._btn_add.clicked.connect(self._on_add)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_delete.clicked.connect(self._on_delete)
-        self._month_picker.currentIndexChanged.connect(self._refresh)
         self._search.textChanged.connect(self._refresh)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.doubleClicked.connect(self._on_edit)
@@ -69,11 +73,29 @@ class PaymentsView(QWidget):
         # when a bill is renamed in another tab).
         self._refresh()
 
-    def _refresh(self) -> None:
+    def month_keys(self) -> list[tuple[int, int]]:
+        """(year, month) keys this tab currently considers interesting —
+        every month from the earliest payment on record through today.
+
+        Used by MainWindow to build the global month selector's entries.
+        """
         rows = payment_repo.get_all()  # sorted DESC, so the last row is earliest
         earliest = rows[-1]["paid_date"] if rows else None
-        populate_month_picker(self._month_picker, earliest)
-        key = self._month_picker.currentData()
+        return [key for _, key in month_entries(earliest, include_all=False)]
+
+    def select_month(self, year: int, month: int) -> None:
+        """Programmatically select `(year, month)` as the current filter."""
+        self._current_key = (year, month)
+        self._refresh()
+
+    def select_all(self) -> None:
+        """Programmatically select "All" as the current filter."""
+        self._current_key = None
+        self._refresh()
+
+    def _refresh(self) -> None:
+        rows = payment_repo.get_all()  # sorted DESC, so the last row is earliest
+        key = self._current_key
         if key is not None:
             prefix = month_prefix(key)
             rows = [r for r in rows if (r["paid_date"] or "").startswith(prefix)]

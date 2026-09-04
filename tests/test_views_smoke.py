@@ -25,6 +25,7 @@ from financeguru.models.debt import Debt
 from financeguru.models.expense import Expense
 from financeguru.models.goal import Goal
 from financeguru.models.income import Income
+from financeguru.models.note import Note
 from financeguru.models.payment import Payment
 from financeguru.models.stock import Stock
 from financeguru.models.stock_tip import StockTip
@@ -33,6 +34,7 @@ from financeguru.repositories import debts as debt_repo
 from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import goals as goal_repo
 from financeguru.repositories import incomes as income_repo
+from financeguru.repositories import notes as note_repo
 from financeguru.repositories import payments as payment_repo
 from financeguru.repositories import stock_tips as tip_repo
 from financeguru.repositories import stocks as stock_repo
@@ -45,6 +47,7 @@ from financeguru.views.debt_snowball_view import DebtSnowballView
 from financeguru.views.expenses_view import ExpensesView
 from financeguru.views.goals_view import GoalsView
 from financeguru.views.main_window import MainWindow
+from financeguru.views.notes_view import NotesView
 from financeguru.views.payments_view import PaymentsView
 from financeguru.views.salary_view import SalaryView
 from financeguru.views.stock_tips_view import StockTipsView
@@ -59,6 +62,7 @@ EXPECTED_TABS = [
     "Expenses",
     "Goals",
     "Income",
+    "Notes",
     "Payments",
     "Stock Tips",
     "Stocks",
@@ -78,6 +82,7 @@ VIEW_CLASSES = [
     GoalsView,
     ChartsView,
     CurrencyConverterView,
+    NotesView,
 ]
 
 
@@ -181,6 +186,12 @@ def seeded_db(temp_db):
             bill_id=goal_bill_id,
         )
     )
+    note_repo.add(Note(body="Seeded note", month_year=f"{today.year:04d}-{today.month:02d}"))
+    note_repo.add(Note(
+        body="Linked to Rent",
+        month_year=f"{today.year:04d}-{today.month:02d}",
+        bill_id=rent_id,
+    ))
     yield temp_db
 
 
@@ -218,6 +229,25 @@ def test_view_constructs_and_refreshes(view_cls, qapp, seeded_db):
     view = view_cls()
     view.refresh()
     _dispose(view, qapp)
+
+
+def test_notes_navigate_refreshes_the_target_view_exactly_once(qapp, seeded_db, monkeypatch):
+    # _on_notes_navigate switches tabs (which alone would trigger
+    # _on_tab_changed's refresh via currentChanged) AND calls select_month
+    # (which also refreshes) — regression guard for both firing together and
+    # doubling the DB round-trips on every link click.
+    window = MainWindow()
+    original_refresh = type(window._bills)._refresh
+    calls = []
+
+    def counting_refresh(self):
+        calls.append(1)
+        return original_refresh(self)
+
+    monkeypatch.setattr(type(window._bills), "_refresh", counting_refresh)
+    window._on_notes_navigate("bills", 2026, 6)
+    assert calls == [1]
+    _dispose(window, qapp)
 
 
 def test_charts_net_worth_trend_renders_gapped_series(qapp, seeded_db):

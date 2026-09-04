@@ -294,6 +294,28 @@ def init_db() -> None:
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            -- Freeform journal entries filed under a calendar month. month_year
+            -- is set explicitly from whichever month is selected in the Notes
+            -- tab's picker when the note is added (backfilling into a past
+            -- month is intentional), never derived from created_at. A note may
+            -- optionally link to at most one Bill or Goal (never both, per the
+            -- CHECK) so its row can jump to that tab; ON DELETE SET NULL means
+            -- deleting the linked Bill/Goal quietly clears the link instead of
+            -- leaving it dangling — NotesView's delete-cascade prompt handles
+            -- the "delete the notes too" case explicitly before that delete.
+            -- Deliberately NOT in _CORE_TABLES: see the comment on `snapshots`
+            -- above — it's a new table added after existing backups were made,
+            -- and requiring it would reject those older, valid backups.
+            CREATE TABLE IF NOT EXISTS notes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                month_year  TEXT    NOT NULL,
+                created_at  TEXT    NOT NULL,
+                body        TEXT    NOT NULL,
+                bill_id     INTEGER REFERENCES bills(id) ON DELETE SET NULL,
+                goal_id     INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+                CHECK (bill_id IS NULL OR goal_id IS NULL)
+            );
         """)
 
         # Migrations for databases created before a column existed.

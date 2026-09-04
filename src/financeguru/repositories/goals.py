@@ -41,6 +41,15 @@ def update(goal: Goal) -> None:
         )
 
 
-def delete(goal_id: int) -> None:
+def delete(goal_id: int, delete_linked_notes: bool = False) -> None:
+    """Delete a goal, optionally its linked notes too, in one transaction.
+
+    ``delete_linked_notes=True`` also deletes any notes linked to this goal
+    (the caller — GoalsView's delete-cascade prompt — has already asked the
+    user). Left False (the default), a linked note survives with its link
+    cleared by the ``notes.goal_id`` FK's ON DELETE SET NULL.
+    """
     with get_connection() as conn:
+        if delete_linked_notes:
+            conn.execute("DELETE FROM notes WHERE goal_id=?", (goal_id,))
         conn.execute("DELETE FROM goals WHERE id=?", (goal_id,))

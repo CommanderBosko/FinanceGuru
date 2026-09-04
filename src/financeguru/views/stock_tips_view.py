@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.stock_tip import StockTip
 from financeguru.prices import TipFetcher, stop_fetcher
 from financeguru.repositories import stock_tips as tips_repo
+from financeguru.views._month_filter import MonthKey
 from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_tip_dialog import StockTipDialog
@@ -32,6 +33,12 @@ class StockTipsView(QWidget):
         super().__init__(parent)
         self._tips: list[StockTip] = []
         self._fetcher: TipFetcher | None = None
+        # The currently filtered (year, month), or None for "All" — matches
+        # this tab's pre-existing behavior (no filtering at all) as the
+        # standalone default. Under MainWindow, driven by the global month
+        # selector via select_month()/select_all() below, filtering by each
+        # tip's own added_date.
+        self._current_key: MonthKey = None
 
         layout = QVBoxLayout(self)
 
@@ -85,17 +92,35 @@ class StockTipsView(QWidget):
         # Public hook MainWindow calls after a DB restore / on tab switch.
         self._load()
 
+    def select_month(self, year: int, month: int) -> None:
+        """Programmatically select `(year, month)` as the current filter."""
+        self._current_key = (year, month)
+        self._render()
+
+    def select_all(self) -> None:
+        """Programmatically select "All" as the current filter."""
+        self._current_key = None
+        self._render()
+
     def _load(self) -> None:
         self._tips = tips_repo.get_all()
         self._render()
 
+    def _visible_tips(self) -> list[StockTip]:
+        if self._current_key is None:
+            return self._tips
+        year, month = self._current_key
+        prefix = f"{year:04d}-{month:02d}"
+        return [t for t in self._tips if (t.added_date or "").startswith(prefix)]
+
     def _render(self) -> None:
+        visible = self._visible_tips()
         self._table.setSortingEnabled(False)
-        self._table.setRowCount(len(self._tips))
-        for row, tip in enumerate(self._tips):
+        self._table.setRowCount(len(visible))
+        for row, tip in enumerate(visible):
             self._render_row(row, tip)
         self._table.setSortingEnabled(True)
-        count = len(self._tips)
+        count = len(visible)
         self._status.setText(f"{count} tip{'s' if count != 1 else ''}")
 
     def _render_row(self, row: int, tip: StockTip) -> None:

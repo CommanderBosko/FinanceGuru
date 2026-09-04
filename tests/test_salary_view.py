@@ -5,7 +5,10 @@ drive the month filter (mirroring Payments/Expenses) and the Budget summary
 that sits below it — in particular, guarding against the "All" bug where
 `total_bills` (always a single month's recurring obligation) used to be
 subtracted straight from all-time income and expenses, producing a bogus
-Extra Spending Money / Over Budget figure.
+Extra Spending Money / Over Budget figure. SalaryView no longer owns a
+month-picker widget — the global month selector in MainWindow now owns the
+combo (see test_main_window_global_month.py) and drives this tab via
+select_month()/select_all(); these tests exercise that same surface directly.
 """
 
 from datetime import date
@@ -20,8 +23,6 @@ from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import expenses as expense_repo
 from financeguru.repositories import incomes as income_repo
 from financeguru.views.salary_view import SalaryView
-
-_ALL_MONTHS_INDEX = 0  # index 0 is always the "All" entry; index 1 is the current month
 
 
 @pytest.fixture
@@ -40,19 +41,17 @@ def view(qapp, temp_db):
 
 def test_defaults_to_current_month_only(view):
     assert view._table.rowCount() == 2
-    assert view._month_picker.currentIndex() == 1
-    assert view._month_picker.currentText() == date.today().strftime("%B %Y")
+    assert view._current_key == (date.today().year, date.today().month)
 
 
-def test_month_picker_spans_from_earliest_record_to_now(view):
-    labels = [view._month_picker.itemText(i) for i in range(view._month_picker.count())]
-    assert labels[0] == "All"
-    assert labels[-1] == "January 2025"
-    assert labels[1] == date.today().strftime("%B %Y")
+def test_month_keys_span_from_earliest_record_to_now(view):
+    keys = view.month_keys()
+    assert (2025, 1) in keys
+    assert (date.today().year, date.today().month) in keys
 
 
 def test_selecting_all_shows_full_history(view):
-    view._month_picker.setCurrentIndex(_ALL_MONTHS_INDEX)
+    view.select_all()
     assert view._table.rowCount() == 3
 
 
@@ -74,7 +73,7 @@ def test_all_time_view_does_not_produce_bogus_extra_spending_money(view):
     behavior is to mark the bills-derived stats N/A for "All" instead of
     reporting a number that mixes a monthly rate with an all-time total.
     """
-    view._month_picker.setCurrentIndex(_ALL_MONTHS_INDEX)
+    view.select_all()
 
     assert view._lbl_bills.text() == "Monthly Bills\nN/A"
     assert view._lbl_extra.text() == "Extra Spending Money\nN/A"
@@ -90,9 +89,8 @@ def test_all_time_view_does_not_produce_bogus_extra_spending_money(view):
 
 
 def test_switching_back_from_all_to_a_month_recomputes_extra(view):
-    view._month_picker.setCurrentIndex(_ALL_MONTHS_INDEX)
-    labels = [view._month_picker.itemText(i) for i in range(view._month_picker.count())]
-    view._month_picker.setCurrentIndex(labels.index(date.today().strftime("%B %Y")))
+    view.select_all()
+    view.select_month(date.today().year, date.today().month)
 
     assert view._lbl_bills.text() == "Monthly Bills\n−$900.00"
     assert view._lbl_extra.text() == "Extra Spending Money\n$1,300.00"
