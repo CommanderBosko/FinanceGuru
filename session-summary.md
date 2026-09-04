@@ -4,6 +4,34 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-09-03 — Notes Tab + Global Month Selector (PR #3)
+
+**Focus**: Add a Notes tab (freeform monthly journal entries, Bills-picker-style), then unify all 7 tabs' local month pickers into one global toolbar selector.
+
+### What changed (and why)
+- **Notes tab shipped in two layers**: data first (`Note` model, schema, repository — `65a8830`), then the view (`d284537`) plus the Goals/Bills changes it depends on (`select_month()`, a delete-cascade Yes/No/Cancel prompt when notes link to the item being deleted). A note files under whichever month is currently selected (not necessarily today's), so backfilling a past month works; a linked note shows a "→ Name" indicator whose click switches tabs and drives the target's month to the linked item's own relevant month.
+- **Groundwork for one global picker**: every month-aware tab (Bills, Payments, Expenses, Income, Goals, Notes, Charts, Stock Tips) got a shared `month_keys()`/`select_month()`/`select_all()` contract (`2fbe434`) without changing any tab's own filtering *rule* — pure wiring change, each still independently tested. Then a single `QComboBox` in a `MainWindow` toolbar row (`659c896`) replaced the 7 tabs' own local pickers, its entry list the union of all 8 tabs' `month_keys()`, rebuilt on tab-switch/DB-restore but only re-broadcast when the selection actually changes.
+- **Two bugs caught by a pre-merge full-diff `/code-review high` pass on the whole PR** (not just the last commit): (1) a Goal's mirrored-bill-linked note wasn't counted or actually deleted by `GoalsView`'s delete-cascade prompt, since it only checked the direct `goal_id` link — fixed same-session (`81e207a`), the button's own "Yes" label had been silently lying; (2) clicking a note's cross-month link left every *other* month-aware tab silently showing a stale month next to the now-desynced toolbar, because `_rebuild_month_list`'s change-detection compared the toolbar's own already-synced value against itself — fixed via a new `skip` param on `_broadcast_month` (`d5d0ece`).
+- **9 more findings from that same review were deliberately deferred**, not fixed — pre-existing patterns, narrow edge cases, or already-accepted trade-offs. Full backlog with file:line locations saved to memory (`global-month-selector-followups`) rather than left to rot in a closed PR's review comments.
+- Merged as PR #3 (`c2079b802`). 328 tests, up from 240.
+
+### Decisions
+- Notes' month is the explicitly-selected picker month, never derived from `created_at` — deliberate backfill support.
+- `bill_id`/`goal_id` stayed two hardcoded nullable FKs rather than a general `entity_type`/`entity_id` link mechanism — simplest fit for exactly two targets today; flagged as a scaling cost if a third ever shows up.
+- Global picker re-broadcasts only on actual selection change (not every tab switch) — avoids an eight-tab refresh storm on routine navigation; accepted as negligible-cost on a two-user local-SQLite app even where it does fire unconditionally.
+- Only the cross-tab-navigation staleness bug got fixed pre-merge; the other 9 review findings were triaged and deferred rather than either blocking the merge or being rushed in without proper care.
+
+### Issues / surprises
+- The Goal-mirrored-bill note-undercounting bug was in code from two commits *earlier this same session* (`d284537`), not a hidden pre-existing bug — caught by review before it ever reached `main`.
+
+### Next session
+- Work the `global-month-selector-followups` backlog: highest-value are `goals_view.py:296` (non-atomic Goal+mirrored-Bill delete) and `main_window.py:257` (global month list doesn't rebuild until a tab switch after a same-tab CRUD change).
+- Unrelated carry-forward items unchanged: natalie-laptop `nix flake update` + rebuild, a real-display GUI eyeball of Charts/Expenses, Windows/macOS/Flatpak hardware verification, multi-user data partitioning.
+
+**Commits**: `65a8830..d5d0ece` (5 commits, merged as `c2079b8`)
+
+---
+
 ## Session: 2026-08-31 — `/improve-system` via `manager` agent (skill-tooling only)
 
 **Focus**: Close out a gap since the 2026-08-16 close-out — no app code changed; the only landed work was a `manager`-agent-run `/improve-system` sweep across the Claude-skill layer.
@@ -106,30 +134,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - No app-facing next steps opened this session — see `project-state.md`'s Next Steps (natalie-laptop rebuild, Charts GUI eyeball, hardware verification of non-Linux builds, multi-user partitioning) for what's actually open.
 
 **Commits**: `8909011..d25bfe4` (6 commits)
-
----
-
-## Session: 2026-07-26 — watch-ci Skill + Skill-Audit Fixes
-
-**Focus**: User asked to run `/skill-suggestion` and `/skill-upgrade` in sequence, then `/skill-audit` once those landed — three separate skill invocations rather than the bundled `/improve-system`.
-
-### What changed (and why)
-- **New project-local `watch-ci` skill** — `/skill-suggestion` mined prior transcripts (no reusable pattern in this session's own empty starting context, since it ran right after `/clear`) and found the same manual `gh run list` → `gh run watch` → `gh run view --json jobs` → `gh run view --log-failed` sequence hand-typed across three sessions (07-03, 07-16, 07-26), including two standalone `sleep`-to-poll attempts the harness's anti-sleep-polling guard blocked. Built to replace that with one invocation.
-- **`/skill-upgrade` found nothing to add** — the candidate misfires surfaced by a cross-session transcript scan were already covered by `session-closer`'s existing Gotchas (the `rotate-session-summary.sh` path bug, the `project-state.md` overflow guidance, the `secret-scan`-availability check); the rest were one-off shell slips outside any skill's documented scope, not worth retrofitting a gotcha onto an unrelated skill.
-- **`/skill-audit` swept all 9 project-local skills** (including the brand-new `watch-ci`) via 3 parallel sub-agents on disjoint groups, and found 4 real issues, all fixed same-session: `watch-ci`'s run-discovery fallback could silently watch a stale run if GitHub hadn't created the new run yet right after a push (added a ~30s retry loop + a mismatch warning); `secret-scan`'s exclude pathspec was accidentally exempting *all* of `.claude/skills/` from scanning instead of just its own directory (narrowed to match the documented intent); `audit`'s migration checklist duplicated `db-migration`'s whole procedure with nothing forcing them to stay in sync (now cross-references it instead); `audit`'s end-of-report fix-it prompt was free text instead of `AskUserQuestion` (fixed).
-
-### Decisions
-- Respected the user's explicit request for three separate skill invocations rather than substituting `/improve-system`, even though it already chains the same skills — the user asked for the granular version this time.
-- A sub-agent's claim that `codebase-improvement-sweep` references a nonexistent `TaskCreate` tool was checked against the live tool list and found to be a false positive; dropped rather than "fixed," per the audit skill's own rule not to trust an unverified claim.
-- Also saved two memory entries: a new reference memory for the `watch-ci` skill, and an update to the existing "verify real CI, not just local" memory pointing it at the new tool instead of leaving it as an unenforced reminder.
-
-### Issues / surprises
-- None — all four fixes were verified before committing (script `bash -n`, a live clean `secret-scan` run with the corrected exclude path).
-
-### Next session
-- No app-facing next steps from this session — see the cross-platform packaging entry below and `project-state.md`'s Next Steps for what's actually open.
-
-**Commits**: `48be9b4..a6f0b35` (4 commits)
 
 ---
 

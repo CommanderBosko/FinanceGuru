@@ -1,3 +1,27 @@
+## Session: 2026-07-26 — watch-ci Skill + Skill-Audit Fixes
+
+**Focus**: User asked to run `/skill-suggestion` and `/skill-upgrade` in sequence, then `/skill-audit` once those landed — three separate skill invocations rather than the bundled `/improve-system`.
+
+### What changed (and why)
+- **New project-local `watch-ci` skill** — `/skill-suggestion` mined prior transcripts (no reusable pattern in this session's own empty starting context, since it ran right after `/clear`) and found the same manual `gh run list` → `gh run watch` → `gh run view --json jobs` → `gh run view --log-failed` sequence hand-typed across three sessions (07-03, 07-16, 07-26), including two standalone `sleep`-to-poll attempts the harness's anti-sleep-polling guard blocked. Built to replace that with one invocation.
+- **`/skill-upgrade` found nothing to add** — the candidate misfires surfaced by a cross-session transcript scan were already covered by `session-closer`'s existing Gotchas (the `rotate-session-summary.sh` path bug, the `project-state.md` overflow guidance, the `secret-scan`-availability check); the rest were one-off shell slips outside any skill's documented scope, not worth retrofitting a gotcha onto an unrelated skill.
+- **`/skill-audit` swept all 9 project-local skills** (including the brand-new `watch-ci`) via 3 parallel sub-agents on disjoint groups, and found 4 real issues, all fixed same-session: `watch-ci`'s run-discovery fallback could silently watch a stale run if GitHub hadn't created the new run yet right after a push (added a ~30s retry loop + a mismatch warning); `secret-scan`'s exclude pathspec was accidentally exempting *all* of `.claude/skills/` from scanning instead of just its own directory (narrowed to match the documented intent); `audit`'s migration checklist duplicated `db-migration`'s whole procedure with nothing forcing them to stay in sync (now cross-references it instead); `audit`'s end-of-report fix-it prompt was free text instead of `AskUserQuestion` (fixed).
+
+### Decisions
+- Respected the user's explicit request for three separate skill invocations rather than substituting `/improve-system`, even though it already chains the same skills — the user asked for the granular version this time.
+- A sub-agent's claim that `codebase-improvement-sweep` references a nonexistent `TaskCreate` tool was checked against the live tool list and found to be a false positive; dropped rather than "fixed," per the audit skill's own rule not to trust an unverified claim.
+- Also saved two memory entries: a new reference memory for the `watch-ci` skill, and an update to the existing "verify real CI, not just local" memory pointing it at the new tool instead of leaving it as an unenforced reminder.
+
+### Issues / surprises
+- None — all four fixes were verified before committing (script `bash -n`, a live clean `secret-scan` run with the corrected exclude path).
+
+### Next session
+- No app-facing next steps from this session — see the cross-platform packaging entry below and `project-state.md`'s Next Steps for what's actually open.
+
+**Commits**: `48be9b4..a6f0b35` (4 commits)
+
+---
+
 ## Session: 2026-07-26 — Cross-Platform Packaging (Flatpak + Windows/macOS)
 
 **Focus**: Ship FinanceGuru beyond NixOS — Flatpak first (locally testable), then Windows/macOS via PyInstaller (CI-only, no local hardware for either).
