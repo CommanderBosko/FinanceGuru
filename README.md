@@ -193,6 +193,10 @@ packaging/
 
 ## Recent Changes
 
+**2026-09-08 — Final Audit of the Notes/Global-Selector Follow-ups (Internal)**
+
+- Internal only, no new user-facing features: the `manager` agent ran a full audit against the two highest-value items from the Notes-tab/global-month-selector follow-up backlog (see prior entry) and fixed both — a Goal and its auto-created Bill are now written atomically (add, edit, and delete all go through one transaction, not two), and the global month picker now updates immediately after adding/editing/deleting in a month-aware tab instead of waiting for the next tab switch. Two smaller fixes: an edge-case correctness fix in Goals' "Amount Left" calculation, and a new warning when deleting a Bill that funds a Goal (previously silent). The other 6 backlog items were reviewed and confirmed still acceptable as-is; see Roadmap. Suite 328 → 343 tests, all green.
+
 **2026-09-03 — Notes Tab + Global Month Selector**
 
 - **New Notes tab** — freeform journal entries filed under a calendar month, optionally linked to a single Bill or Goal with a clickable cross-tab jump to the linked item's own relevant month. Deleting a linked Bill/Goal offers to delete its notes too.
@@ -261,7 +265,7 @@ _Earlier session entries (including 2026-07-04's devShell Qt fix, 2026-07-02's s
 ## Roadmap
 
 - **Charts polish** — GUI eyeball of the Charts/Expenses tabs on a real display (the new net-worth trend's gap breaks and axis density, legend/colour/pie-label readability); decide whether the stacked over-time chart should also exclude Savings.
-- **Global-selector follow-ups** — a prioritized backlog of 9 findings deferred from the pre-merge review of the Notes/global-month-selector PR (details in project memory / `project-state.md`). The two highest-value: make a Goal-with-mirrored-Bill delete atomic (currently two separate transactions), and have month-aware tabs notify `MainWindow` after their own Add/Edit/Delete so the global month list updates without needing a tab switch.
+- **Global-selector follow-ups (mostly resolved 2026-09-08)** — of the original 9-item backlog from the Notes/global-month-selector PR's pre-merge review, the two highest-value are now fixed (atomic Goal+Bill writes; immediate global month-list rebuild after in-tab CRUD) and the remaining 6 were reviewed and confirmed still acceptable as-is (details in `project-state.md`'s Known Issues). Two open, low-priority items remain: whether a Goal's auto-created Bill should ever be independently editable from the Bills tab without an edit to the Goal reverting it, and whether Stock Tips should contribute its own months to the global picker (currently harmless since a tip's date is always today).
 - **Multi-user support** — App is used by two people (bosko, natty); per-user data partitioning is not yet implemented, and the two machines hold two independent SQLite files (a sync-vs-partition decision to make deliberately first).
 - **Schema migrations** — No framework, but `init_db()` is the established migration point and the `db-migration` skill documents the procedure (additive columns, guarded idempotent data fixups, idempotent seeding). Column drop/rename is still manual SQL.
 
