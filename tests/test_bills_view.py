@@ -256,3 +256,58 @@ def test_current_key_persists_across_refresh_even_if_now_empty(view):
 
     assert view._current_key == (2027, 3)
     assert _names(view) == set()
+
+
+def test_delete_warns_when_the_bill_funds_a_goal(view, monkeypatch):
+    # A bill can be a Goal's mirrored bill without any other marker on it in
+    # the Bills tab — deleting it here must call that out explicitly rather
+    # than reading exactly like deleting an ordinary bill.
+    bill_id = bill_repo.add(Bill(name="Goal: Car", amount=Decimal("200"), due_day=1))
+    goal_repo.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                        start_date="2026-01-01", bill_id=bill_id))
+    view._refresh()
+
+    messages = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *a, **k: messages.append(a[2]) or QMessageBox.StandardButton.No,
+    )
+    view._table.selectRow(0)
+    view._on_delete()
+
+    assert len(messages) == 1
+    assert "Car" in messages[0]
+    assert bill_repo.get_all()[0].id == bill_id  # "No" — nothing deleted
+
+
+def test_delete_does_not_warn_about_a_goal_for_an_ordinary_bill(view, monkeypatch):
+    bill_repo.add(Bill(name="Rent", amount=Decimal("1000"), due_day=1))
+    view._refresh()
+
+    messages = []
+    monkeypatch.setattr(
+        QMessageBox, "question",
+        lambda *a, **k: messages.append(a[2]) or QMessageBox.StandardButton.No,
+    )
+    view._table.selectRow(0)
+    view._on_delete()
+
+    assert len(messages) == 1
+    assert "Goal" not in messages[0]
+
+
+def test_add_edit_delete_emit_data_changed(view, monkeypatch):
+    # MainWindow relies on this signal to rebuild the global month list
+    # immediately after an in-tab CRUD, instead of only on the next tab
+    # switch or DB restore (see main_window.py's data_changed wiring).
+    calls = []
+    view.data_changed.connect(lambda: calls.append(1))
+
+    bill_id = bill_repo.add(Bill(name="Rent", amount=Decimal("1000"), due_day=1))
+    view._refresh()
+    view._table.selectRow(0)
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    view._on_delete()
+
+    assert calls == [1]

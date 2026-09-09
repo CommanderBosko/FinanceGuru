@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -11,7 +11,6 @@ from financeguru.categories import GOAL_NOTE, SAVINGS_CATEGORY
 from financeguru.models.bill import Bill
 from financeguru.models.goal import Goal, months_remaining
 from financeguru.money import ZERO
-from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
 from financeguru.repositories import notes as note_repo
 from financeguru.repositories import payments as payment_repo
@@ -71,6 +70,12 @@ def _visible_in_month(goal: Goal, key: MonthKey, paid_through: dict[int, Decimal
 
 
 class GoalsView(QWidget):
+    # Emitted after any add/edit/delete that could introduce or remove an
+    # "interesting month" (a new start_date) — MainWindow connects this to
+    # _rebuild_month_list() so the global picker updates immediately instead
+    # of only on the next tab switch or DB restore.
+    data_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._goals: list[Goal] = []
@@ -179,7 +184,7 @@ class GoalsView(QWidget):
         self._table.setRowCount(len(self._goals))
         for row, goal in enumerate(self._goals):
             # Each Goal-bill payment chips away at what's left to fund the goal.
-            contributed = paid.get(goal.bill_id, ZERO) if goal.bill_id else ZERO
+            contributed = paid.get(goal.bill_id, ZERO) if goal.bill_id is not None else ZERO
             left = max(goal.price - contributed, ZERO)
             months_left = months_remaining(goal.target_date)
             monthly_savings = goal.monthly_savings()
@@ -229,9 +234,11 @@ class GoalsView(QWidget):
         if not dialog.exec():
             return
         goal = dialog.goal()
-        goal.bill_id = bill_repo.add(self._bill_for_goal(goal))
-        goal_repo.add(goal)
+        # Inserts the goal and its mirrored bill in one transaction — see
+        # add_with_bill's docstring for why this can't be two separate calls.
+        goal_repo.add_with_bill(goal, self._bill_for_goal(goal))
         self._refresh()
+        self.data_changed.emit()
 
     def _on_edit(self) -> None:
         goal = self._selected_goal()
@@ -242,12 +249,9 @@ class GoalsView(QWidget):
             return
         updated = dialog.goal()
         bill = self._bill_for_goal(updated)
-        if updated.bill_id is None:
-            updated.bill_id = bill_repo.add(bill)
-        else:
-            bill_repo.update(bill)
-        goal_repo.update(updated)
+        goal_repo.update_with_bill(updated, bill, bill_is_new=updated.bill_id is None)
         self._refresh()
+        self.data_changed.emit()
 
     def _on_delete(self) -> None:
         goal = self._selected_goal()
@@ -267,10 +271,11 @@ class GoalsView(QWidget):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
-            if goal.bill_id is not None:
-                bill_repo.delete(goal.bill_id)
-            goal_repo.delete(goal.id)
+            # Deletes the goal and its mirrored bill in one transaction — see
+            # delete_with_bill's docstring for why this can't be two calls.
+            goal_repo.delete_with_bill(goal.id, goal.bill_id)
             self._refresh()
+            self.data_changed.emit()
             return
 
         # Notes link to this goal (directly or via its mirrored bill) — fold
@@ -291,7 +296,6 @@ class GoalsView(QWidget):
         if answer == QMessageBox.StandardButton.Cancel:
             return
         delete_notes = answer == QMessageBox.StandardButton.Yes
-        if goal.bill_id is not None:
-            bill_repo.delete(goal.bill_id, delete_linked_notes=delete_notes)
-        goal_repo.delete(goal.id, delete_linked_notes=delete_notes)
+        goal_repo.delete_with_bill(goal.id, goal.bill_id, delete_linked_notes=delete_notes)
         self._refresh()
+        self.data_changed.emit()

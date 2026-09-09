@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 from financeguru.models.stock_tip import StockTip
 from financeguru.prices import TipFetcher, stop_fetcher
 from financeguru.repositories import stock_tips as tips_repo
-from financeguru.views._month_filter import MonthKey
+from financeguru.views._month_filter import MonthKey, month_prefix
 from financeguru.views._table import center, money, right
 from financeguru.views.context_menu import attach_row_menu
 from financeguru.views.stock_tip_dialog import StockTipDialog
@@ -109,8 +109,7 @@ class StockTipsView(QWidget):
     def _visible_tips(self) -> list[StockTip]:
         if self._current_key is None:
             return self._tips
-        year, month = self._current_key
-        prefix = f"{year:04d}-{month:02d}"
+        prefix = month_prefix(self._current_key)
         return [t for t in self._tips if (t.added_date or "").startswith(prefix)]
 
     def _render(self) -> None:

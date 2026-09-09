@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import date
 
 from financeguru.db import get_connection
@@ -23,8 +24,13 @@ def get_all(today: date | None = None) -> list[Bill]:
     return result
 
 
-def add(bill: Bill) -> int:
-    with get_connection() as conn:
+def add(bill: Bill, conn: sqlite3.Connection | None = None) -> int:
+    """Insert `bill`, returning its new id.
+
+    Pass an existing `conn` (e.g. from `goals.add_with_bill`) to run inside a
+    caller-owned transaction instead of opening (and committing) a new one.
+    """
+    if conn is not None:
         cur = conn.execute(
             "INSERT INTO bills"
             " (name, amount, due_day, due_month, due_year, recurrence, is_active, notes, category)"
@@ -33,19 +39,29 @@ def add(bill: Bill) -> int:
              bill.recurrence, int(bill.is_active), bill.notes, bill.category),
         )
         return cur.lastrowid or 0
-
-
-def update(bill: Bill) -> None:
     with get_connection() as conn:
+        return add(bill, conn=conn)
+
+
+def update(bill: Bill, conn: sqlite3.Connection | None = None) -> None:
+    """Update `bill`. Pass an existing `conn` to join a caller-owned transaction."""
+    if conn is not None:
         conn.execute(
             "UPDATE bills SET name=?, amount=?, due_day=?, due_month=?, due_year=?, recurrence=?,"
             " is_active=?, notes=?, category=? WHERE id=?",
             (bill.name, bill.amount, bill.due_day, bill.due_month, bill.due_year,
              bill.recurrence, int(bill.is_active), bill.notes, bill.category, bill.id),
         )
+        return
+    with get_connection() as conn:
+        update(bill, conn=conn)
 
 
-def delete(bill_id: int, delete_linked_notes: bool = False) -> None:
+def delete(
+    bill_id: int,
+    delete_linked_notes: bool = False,
+    conn: sqlite3.Connection | None = None,
+) -> None:
     """Delete a bill and its payments in one transaction.
 
     ``delete_linked_notes=True`` also deletes any notes linked to this bill in
@@ -53,8 +69,11 @@ def delete(bill_id: int, delete_linked_notes: bool = False) -> None:
     has already asked the user). Left False (the default, and every other
     call site), a linked note survives with its link cleared by the
     ``notes.bill_id`` FK's ON DELETE SET NULL once the bill row is gone.
+
+    Pass an existing `conn` (e.g. from `goals.delete_with_bill`) to run
+    inside a caller-owned transaction instead of opening a new one.
     """
-    with get_connection() as conn:
+    if conn is not None:
         # New DBs declare the FK with ON DELETE CASCADE, but databases created
         # before that change keep the old constraint, so delete children
         # explicitly to stay correct across both.
@@ -62,6 +81,9 @@ def delete(bill_id: int, delete_linked_notes: bool = False) -> None:
         if delete_linked_notes:
             conn.execute("DELETE FROM notes WHERE bill_id=?", (bill_id,))
         conn.execute("DELETE FROM bills WHERE id=?", (bill_id,))
+        return
+    with get_connection() as conn:
+        delete(bill_id, delete_linked_notes=delete_linked_notes, conn=conn)
 
 
 def _row_to_bill(row) -> Bill:

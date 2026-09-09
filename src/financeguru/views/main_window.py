@@ -90,6 +90,19 @@ class MainWindow(QMainWindow):
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
+        # A month-aware tab's own add/edit/delete can introduce or remove an
+        # "interesting month" (e.g. a new one-time Bill's due month, a Goal's
+        # start_date) without the user ever switching tabs. Views that can
+        # do that expose a data_changed signal (not every _MONTH_AWARE_ATTRS
+        # entry does — Notes and Charts only ever *consume* the global
+        # selection, never contribute their own months) so the global list
+        # rebuilds immediately instead of waiting for the next tab switch or
+        # DB restore.
+        for attr in self._MONTH_AWARE_ATTRS:
+            view = getattr(self, attr)
+            if hasattr(view, "data_changed"):
+                view.data_changed.connect(self._rebuild_month_list)
+
         # Global month selector — a toolbar row above the tabs, always
         # visible regardless of which tab is active. Replaces the per-tab
         # month pickers this class used to own indirectly (each affected

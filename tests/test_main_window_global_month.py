@@ -233,6 +233,36 @@ def test_notes_link_navigation_propagates_the_new_month_to_every_other_tab(windo
     assert window._stock_tips._current_key == target
 
 
+def test_data_changed_rebuilds_the_global_list_immediately(window):
+    # Regression: previously the global month list only re-derived on a tab
+    # switch or DB restore, so a new "interesting month" introduced by an
+    # in-tab add/edit/delete (while that tab stayed active) didn't appear in
+    # the picker until the user switched away and back. Each month-aware
+    # view that can introduce one now emits data_changed after its own
+    # add/edit/delete handlers (see e.g. BillsView._on_add); MainWindow
+    # connects it straight to _rebuild_month_list. This simulates that
+    # signal firing without going through a dialog-driven _on_add.
+    bill_repo.add(Bill(name="New Roof", amount=Decimal("5000"), due_day=1,
+                        due_month=3, due_year=2031, recurrence="one-time"))
+    assert "March 2031" not in _labels(window)
+
+    window._bills.data_changed.emit()
+
+    assert "March 2031" in _labels(window)
+
+
+def test_data_changed_is_wired_for_every_view_that_can_introduce_a_new_month(window):
+    # Notes and Charts only ever *consume* the global selection (see
+    # main_window.py's wiring comment) — they must NOT have data_changed
+    # connected to anything, since they have no month_keys() contribution to
+    # rebuild for. Stock Tips has no month_keys() either (see
+    # stock_tips_view.py), so it's excluded too.
+    for attr in ("_bills", "_payments", "_expenses", "_salary", "_goals"):
+        assert hasattr(getattr(window, attr), "data_changed")
+    for attr in ("_notes", "_charts", "_stock_tips"):
+        assert not hasattr(getattr(window, attr), "data_changed")
+
+
 def test_rebuild_month_list_is_a_noop_when_the_selection_is_unaffected(window, monkeypatch):
     # Rebuilding on every tab switch must not refresh every consumer tab
     # unless the selection actually needs to change.
