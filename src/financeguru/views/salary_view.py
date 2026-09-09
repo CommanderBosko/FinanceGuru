@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
@@ -26,6 +26,12 @@ _BLUE = "#2980b9"
 
 
 class SalaryView(QWidget):
+    # Emitted after any add/edit/delete that could introduce or remove an
+    # "interesting month" — MainWindow connects this to _rebuild_month_list()
+    # so the global picker updates immediately instead of only on the next
+    # tab switch or DB restore.
+    data_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._incomes: list[Income] = []
@@ -292,6 +298,7 @@ class SalaryView(QWidget):
         if dialog.exec():
             income_repo.add(dialog.income())
             self._refresh()
+            self.data_changed.emit()
 
     def _on_edit(self) -> None:
         income = self._selected()
@@ -301,6 +308,7 @@ class SalaryView(QWidget):
         if dialog.exec():
             income_repo.update(dialog.income())
             self._refresh()
+            self.data_changed.emit()
 
     def _on_delete(self) -> None:
         income = self._selected()
@@ -314,3 +322,4 @@ class SalaryView(QWidget):
         if answer == QMessageBox.StandardButton.Yes:
             income_repo.delete(income.id)
             self._refresh()
+            self.data_changed.emit()

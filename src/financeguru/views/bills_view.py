@@ -1,6 +1,6 @@
 from datetime import date
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QHeaderView, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -77,6 +77,12 @@ def _visible_in_month(bill: Bill, key: MonthKey, goal_starts: dict[int, str]) ->
 
 
 class BillsView(QWidget):
+    # Emitted after any add/edit/delete that could introduce or remove an
+    # "interesting month" — MainWindow connects this to _rebuild_month_list()
+    # so the global picker updates immediately instead of only on the next
+    # tab switch or DB restore.
+    data_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._bills: list[Bill] = []
@@ -208,6 +214,7 @@ class BillsView(QWidget):
         if dialog.exec():
             bill_repo.add(dialog.bill())
             self._refresh()
+            self.data_changed.emit()
 
     def _on_edit(self) -> None:
         bill = self._selected_bill()
@@ -217,22 +224,39 @@ class BillsView(QWidget):
         if dialog.exec():
             bill_repo.update(dialog.bill())
             self._refresh()
+            self.data_changed.emit()
 
     def _on_delete(self) -> None:
         bill = self._selected_bill()
         if bill is None:
             return
         linked_notes = note_repo.get_by_bill_id(bill.id) if bill.id is not None else []
+        # A bill can be a Goal's mirrored bill (goals.bill_id) without the
+        # Bills tab knowing it by any other marker — deleting it here would
+        # otherwise silently erase that goal's whole contribution history
+        # (the goal survives via ON DELETE SET NULL, but with $0 progress)
+        # with no warning distinguishing it from an ordinary bill delete.
+        linked_goal = None
+        if bill.id is not None:
+            linked_goal = next((g for g in goal_repo.get_all() if g.bill_id == bill.id), None)
+        goal_warning = (
+            f"\n\nThis bill funds the Goal \"{linked_goal.name}\" — deleting it will also "
+            "erase that goal's contribution history (the goal itself stays, but its "
+            "progress resets to $0)."
+            if linked_goal is not None else ""
+        )
         if not linked_notes:
             answer = QMessageBox.question(
                 self,
                 "Delete Bill",
-                f"Delete '{bill.name}'? All associated payments will also be removed.",
+                f"Delete '{bill.name}'? All associated payments will also be removed."
+                f"{goal_warning}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if answer == QMessageBox.StandardButton.Yes:
                 bill_repo.delete(bill.id)
                 self._refresh()
+                self.data_changed.emit()
             return
 
         # Notes link to this bill — fold the choice into one dialog rather
@@ -241,7 +265,8 @@ class BillsView(QWidget):
         answer = QMessageBox.question(
             self,
             "Delete Bill",
-            f"Delete '{bill.name}'? All associated payments will also be removed.\n\n"
+            f"Delete '{bill.name}'? All associated payments will also be removed."
+            f"{goal_warning}\n\n"
             f"{len(linked_notes)} note(s) are linked to this bill.\n\n"
             "Yes — delete the bill and those notes.\n"
             "No — delete the bill and keep the notes (their link will be cleared).\n"
@@ -254,6 +279,7 @@ class BillsView(QWidget):
             return
         bill_repo.delete(bill.id, delete_linked_notes=answer == QMessageBox.StandardButton.Yes)
         self._refresh()
+        self.data_changed.emit()
 
     def _on_pay(self) -> None:
         bill = self._selected_bill()

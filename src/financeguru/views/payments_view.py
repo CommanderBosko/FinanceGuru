@@ -1,6 +1,6 @@
 from datetime import date
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout, QHeaderView, QLineEdit, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -14,6 +14,12 @@ from financeguru.views._table import center, money, right
 
 
 class PaymentsView(QWidget):
+    # Emitted after any add/edit/delete that could introduce or remove an
+    # "interesting month" — MainWindow connects this to _rebuild_month_list()
+    # so the global picker updates immediately instead of only on the next
+    # tab switch or DB restore.
+    data_changed = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._rows: list[dict] = []
@@ -136,6 +142,7 @@ class PaymentsView(QWidget):
         if dialog.exec():
             payment_repo.add(dialog.payment())
             self._refresh()
+            self.data_changed.emit()
 
     def _selected_row(self) -> dict | None:
         row = self._table.currentRow()
@@ -152,6 +159,7 @@ class PaymentsView(QWidget):
         if dialog.exec():
             payment_repo.update(dialog.payment())
             self._refresh()
+            self.data_changed.emit()
 
     def _on_delete(self) -> None:
         rec = self._selected_row()
@@ -166,3 +174,4 @@ class PaymentsView(QWidget):
         if answer == QMessageBox.StandardButton.Yes:
             payment_repo.delete(rec["id"])
             self._refresh()
+            self.data_changed.emit()

@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from financeguru.models.bill import Bill
 from financeguru.models.goal import Goal
 from financeguru.models.note import Note
@@ -78,3 +80,93 @@ def test_deleting_linked_bill_sets_goal_bill_id_null():
     assert len(survivors) == 1
     assert survivors[0].id == gid
     assert survivors[0].bill_id is None
+
+
+# ── Atomic goal+bill operations ─────────────────────────────────────────────
+# GoalsView used to do these as two separate get_connection() calls (one per
+# repo); a failure between them could leave a phantom ownerless Bill or an
+# orphaned Goal. add_with_bill/update_with_bill/delete_with_bill wrap both
+# writes in a single transaction instead.
+
+def test_add_with_bill_inserts_both_and_links_them():
+    goal = Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                start_date="2026-01-01")
+    bill = Bill(name="Goal: Car", amount=Decimal("200"), due_day=31)
+
+    goal_id, bill_id = goals.add_with_bill(goal, bill)
+
+    assert goal_id and bill_id
+    assert goal.bill_id == bill_id  # mutated in place before the goal insert
+    saved_goal = goals.get_all()[0]
+    assert saved_goal.id == goal_id
+    assert saved_goal.bill_id == bill_id
+    assert len(bills.get_all()) == 1
+
+
+def test_add_with_bill_rolls_back_the_bill_if_the_goal_insert_fails(monkeypatch):
+    class _Boom(Exception):
+        pass
+
+    def _boom(*args, **kwargs):
+        raise _Boom("simulated failure between the two writes")
+
+    monkeypatch.setattr(goals, "add", _boom)
+
+    goal = Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                start_date="2026-01-01")
+    bill = Bill(name="Goal: Car", amount=Decimal("200"), due_day=31)
+
+    with pytest.raises(_Boom):
+        goals.add_with_bill(goal, bill)
+
+    # The bill insert ran first and succeeded — without the shared
+    # transaction it would be a permanent phantom, ownerless Bill.
+    assert bills.get_all() == []
+    assert goals.get_all() == []
+
+
+def test_update_with_bill_new_inserts_a_bill_and_links_it():
+    goal_id = goals.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31"))
+    goal = goals.get_all()[0]
+    assert goal.bill_id is None
+
+    bill = Bill(name="Goal: Car", amount=Decimal("200"), due_day=31)
+    goals.update_with_bill(goal, bill, bill_is_new=True)
+
+    updated = goals.get_all()[0]
+    assert updated.bill_id is not None
+    assert len(bills.get_all()) == 1
+
+
+def test_update_with_bill_existing_updates_in_place():
+    bill_id = bills.add(Bill(name="Goal: Car", amount=Decimal("200"), due_day=31))
+    goal_id = goals.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                              bill_id=bill_id))
+    goal = goals.get_all()[0]
+
+    updated_bill = Bill(id=bill_id, name="Goal: Car", amount=Decimal("250"), due_day=31)
+    goal.price = Decimal("3000")
+    goals.update_with_bill(goal, updated_bill, bill_is_new=False)
+
+    assert goals.get_all()[0].price == Decimal("3000")
+    assert len(bills.get_all()) == 1
+    assert bills.get_all()[0].amount == Decimal("250")
+
+
+def test_delete_with_bill_removes_both():
+    bill_id = bills.add(Bill(name="Goal: Car", amount=Decimal("200"), due_day=31))
+    gid = goals.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                          bill_id=bill_id))
+
+    goals.delete_with_bill(gid, bill_id)
+
+    assert goals.get_all() == []
+    assert bills.get_all() == []
+
+
+def test_delete_with_bill_none_only_removes_the_goal():
+    gid = goals.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31"))
+
+    goals.delete_with_bill(gid, None)
+
+    assert goals.get_all() == []

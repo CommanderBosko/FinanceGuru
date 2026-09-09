@@ -21,6 +21,7 @@ from financeguru.repositories import bills as bill_repo
 from financeguru.repositories import goals as goal_repo
 from financeguru.repositories import notes as note_repo
 from financeguru.repositories import payments as payment_repo
+from financeguru.views.goal_dialog import GoalDialog
 from financeguru.views.goals_view import GoalsView
 
 
@@ -237,3 +238,88 @@ def test_delete_goal_no_clears_bill_linked_notes_instead_of_leaving_them_danglin
     remaining = note_repo.get_for_month(2026, 6)
     assert [n.id for n in remaining] == [note_id]
     assert remaining[0].bill_id is None
+
+
+# ── Atomic add/edit via the view, and the data_changed signal ──────────────
+# _on_add/_on_edit/_on_delete now go through goals.add_with_bill/
+# update_with_bill/delete_with_bill (atomicity is unit-tested directly in
+# test_goals_repo.py) — these confirm the view still wires up correctly end
+# to end: exactly one mirrored Bill per Goal, and the goal_id/bill_id link is
+# set, whichever repo call happened first internally.
+
+def test_on_add_creates_exactly_one_mirrored_bill_and_links_it(view, monkeypatch):
+    goal = Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                start_date="2026-01-01")
+    monkeypatch.setattr(GoalDialog, "exec", lambda self: True)
+    monkeypatch.setattr(GoalDialog, "goal", lambda self: goal)
+
+    view._on_add()
+
+    saved = goal_repo.get_all()
+    assert len(saved) == 1
+    assert saved[0].bill_id is not None
+    assert len(bill_repo.get_all()) == 1
+
+
+def test_on_edit_updates_the_existing_mirrored_bill_not_a_second_one(view, monkeypatch):
+    bill_id = bill_repo.add(Bill(name="Goal: Car", amount=Decimal("200"), due_day=31))
+    goal_id = goal_repo.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                                  start_date="2026-01-01", bill_id=bill_id))
+    view._refresh()
+    view._table.selectRow(0)
+
+    updated = Goal(id=goal_id, name="Car", price=Decimal("3000"), target_date="2027-06-30",
+                    start_date="2026-01-01", bill_id=bill_id)
+    monkeypatch.setattr(GoalDialog, "exec", lambda self: True)
+    monkeypatch.setattr(GoalDialog, "goal", lambda self: updated)
+
+    view._on_edit()
+
+    assert len(bill_repo.get_all()) == 1
+    assert goal_repo.get_all()[0].price == Decimal("3000")
+
+
+def test_on_add_edit_delete_emit_data_changed(view, monkeypatch):
+    # MainWindow relies on this signal to rebuild the global month list
+    # immediately after an in-tab CRUD, instead of only on the next tab
+    # switch or DB restore.
+    calls = []
+    view.data_changed.connect(lambda: calls.append(1))
+
+    goal = Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                start_date="2026-01-01")
+    monkeypatch.setattr(GoalDialog, "exec", lambda self: True)
+    monkeypatch.setattr(GoalDialog, "goal", lambda self: goal)
+    view._on_add()
+    assert calls == [1]
+
+    view._table.selectRow(0)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    view._on_delete()
+    assert calls == [1, 1]
+
+
+def test_amount_left_treats_bill_id_zero_as_a_real_link_not_falsy(view):
+    # Regression: `if goal.bill_id else ZERO` (a truthy check) treated a
+    # bill_id of 0 as "no linked bill", so a real contribution recorded
+    # against bill_id=0 would be silently ignored and "Amount Left" would
+    # misreport the full price. AUTOINCREMENT never assigns 0 via the app's
+    # own add path, so this crafts the edge case directly against the DB to
+    # prove the `is not None` check actually reaches `paid.get(0, ...)`.
+    from decimal import Decimal as D
+
+    from financeguru import db
+    from financeguru.models.payment import Payment
+    from financeguru.repositories import payments as payment_repo
+
+    with db.get_connection() as conn:
+        conn.execute(
+            "INSERT INTO bills (id, name, amount, due_day, recurrence, is_active, category)"
+            " VALUES (0, 'Goal: Car', 200, 31, 'monthly', 1, 'Savings')"
+        )
+    goal_repo.add(Goal(name="Car", price=Decimal("2400"), target_date="2027-01-31",
+                        start_date="2026-01-01", bill_id=0))
+    payment_repo.add(Payment(bill_id=0, amount=D("500"), paid_date="2026-02-01"))
+    view._refresh()
+
+    assert view._table.item(0, 2).text() == "$1,900.00"  # 2400 - 500, not the full price
