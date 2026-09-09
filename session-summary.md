@@ -4,6 +4,35 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 
 ---
 
+## Session: 2026-09-09 — Coordinate, Review & Merge PR #4
+
+**Focus**: Kick off the "we never did a final code audit" request via the `manager` agent, then independently verify and merge its result rather than trusting it blind.
+
+### What changed (and why)
+- User asked to loop a final audit of PR #3's deferred backlog via the `manager` agent, with an explicit ask for session-limit resumability. Set up a status-file-based checkpoint contract (`AUDIT_LOOP_STATUS.md`) before spawning the manager in an isolated worktree — it ended up unused, since the manager converged in one continuous run without hitting a limit.
+- Manager's full report (5 fixes, 6 re-affirmed findings, 2 documented-not-fixed, PR #4 opened, CI green) is recorded in detail in the entry below (written by the manager itself as part of its `0e45fff` commit) — not duplicated here.
+- Rather than merging on the subagent's word, ran the project's own `/code-review high` against PR #4 directly. It surfaced a real regression the audit had introduced: the new "update the picker immediately" wiring could re-apply itself to the tab that had just triggered it, silently overriding the month a user was mid-edit on. Sent this back to the same manager instance (still holding full context) rather than merging past it.
+- Manager fixed it (reusing the existing `skip`-the-triggering-view mechanism, `e413f99`), added a regression test, and re-verified — but its own turns kept ending on "waiting for CI" without actually blocking on it, burning real tokens each re-poll for no new information. Switched to a `Monitor` watching the PR's CI checks directly instead of continuing to bounce messages at the manager, then told it to stand down once that was in place.
+- Once CI was confirmed green independently, eyeballed the actual fix diff and its Known Issues writeup personally before merging — found it clean, minimal, and consistent with PR #3's precedent for what counts as "acceptable to defer." Merged into `main` as `c9f55f1` (same merge-commit strategy as PR #3; branch kept, matching that convention).
+- A stray LSP diagnostics dump right after merge (`int | None` → `int` warnings on the new `delete_with_bill`/`delete` calls) looked suspicious enough post-audit to check rather than dismiss — traced each one and confirmed all pre-existing/unrelated noise, not a regression.
+- Removed the now-redundant worktree (`.claude/worktrees/agent-a79bd2a961e80fba3`) and its local branch once everything was confirmed merged.
+
+### Decisions
+- Chose independent verification over trusting either the manager's report or the code-review's own summary at face value — ran CI checks and read the diff personally before the merge action, which is what actually caught the regression in the first place.
+- Layered checkpoint file + (declined) cron for resumability, per the user's explicit ask; kept it lightweight since a status file costs nothing even when unused.
+- Stopped re-polling the manager once a dedicated `Monitor` was watching the same signal — no value in paying subagent tokens twice for the same wait.
+
+### Issues / surprises
+- The manager agent repeatedly ended its turn mid-"waiting for CI" instead of actually blocking on it — not a hard failure, but wasteful if just re-pinged in a loop; watching CI directly resolved it.
+- This worktree-isolated sandbox blocks essentially all local `git` porcelain (including `commit-tree`) — documented in detail in the entry below and in `project-state.md`'s Known Issues, since it'll recur for any future worktree-isolated session in this repo.
+
+### Next session
+- See `project-state.md`'s Next Steps — nothing new opened by this session; it closed out existing backlog rather than opening more (bar the 8 low-priority cleanup items PR #4's own review deferred, already folded into Known Issues).
+
+**Commits**: `e413f99..c9f55f1` (2 commits: the re-entrancy fix, and the merge)
+
+---
+
 ## Session: 2026-09-08 — Final Audit of PR #3's 9 Deferred Findings (`manager` agent)
 
 **Focus**: Run a comprehensive, unattended audit against PR #3 (Notes tab + global month selector) and loop fix→re-audit until clear, per the `manager` agent's own decision-making profile.
@@ -113,32 +142,6 @@ _Older entries are in [session-summary-archive.md](session-summary-archive.md)._
 - No app-facing next steps opened this session — see `project-state.md`'s Next Steps (natalie-laptop rebuild, Charts GUI eyeball, non-Linux hardware verification, multi-user partitioning) for what's actually open.
 
 **Commits**: `0cb13c4..3968f5e` (2 commits)
-
----
-
-## Session: 2026-08-03 — Bills Month/Year Filter + Goal Gating, Windows CI Fix, qt-visual-verify Skill
-
-**Focus**: User asked how the Goals `start_date` feature worked, noticed a future-dated Goal's bill showing on the Bills tab immediately, and asked whether that was a `start_date` bug or a bigger gap.
-
-### What changed (and why)
-- **Diagnosed as the bigger problem**: `BillsView` listed every bill unconditionally with no month concept at all (unlike Payments/Income, which already had month/year dropdowns), and `GoalsView` never passed `start_date` to the linked bill it auto-creates. Fixing only the second half would have had nowhere to take effect.
-- **Bills gained a month/year `QComboBox`** (via `/interview` to pin the exact semantics first) — defaults to the current month, built from "interesting" months (today, one-time due months, yearly this/next-year due months, goal start/target months), filtering via `Bill.is_due_in`. A goal-specific gate lives in `BillsView` itself (cross-references `repositories/goals.py`) to hide a goal's bill until its `start_date` month — no schema change.
-- **Follow-up `/audit` pass** found no must-fix issues, 3 minor ones: documented the ascending-vs-Payments/Income's-descending month-picker sort choice, renamed an ambiguous `start` variable to `start_iso`, added a test for the previously-selected-month-vanishing fallback case.
-- **Real Windows CI (not local) caught `os.O_NOFOLLOW`** not existing on that platform — crashed `export_all_csv()`'s symlink-race guard with `AttributeError`. Fixed with a `getattr(os, "O_NOFOLLOW", 0)` fallback.
-- **New `qt-visual-verify` project skill** — screenshot-and-actually-look verification, distinct from `qt-smoke`'s functional-only checks; built via `/skill-suggestion` after the same hand-rolled pattern turned up in 9 of 11 recent sessions.
-- **`.claude/settings.local.json` added to the repo's own `.gitignore`** — previously excluded only via this machine's global git config; now any contributor gets the same exclusion without it.
-
-### Decisions
-- `start_date` kept off the `Bill` model entirely, per the user's explicit interview answers — the goal-bill gate lives in `BillsView` only.
-- Bills' month picker sorts oldest-first (unlike Payments/Income's newest-first) — accepted as-is, since Bills mixes past *and* future months.
-
-### Issues / surprises
-- This session also touched the separate NixOS repo (a `skill-upgrade` gotcha fix to `session-closer`'s transcript-cutoff detector, committed there as `2ed3644`) — unrelated to FinanceGuru's own history, noted here so it isn't mistaken for missing work.
-
-### Next session
-- No app-facing next steps opened this session — see `project-state.md`'s Next Steps for what's actually open.
-
-**Commits**: `1b96965..6fa44d3` (5 commits)
 
 ---
 

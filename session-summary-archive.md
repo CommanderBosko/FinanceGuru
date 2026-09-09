@@ -1,3 +1,29 @@
+## Session: 2026-08-03 — Bills Month/Year Filter + Goal Gating, Windows CI Fix, qt-visual-verify Skill
+
+**Focus**: User asked how the Goals `start_date` feature worked, noticed a future-dated Goal's bill showing on the Bills tab immediately, and asked whether that was a `start_date` bug or a bigger gap.
+
+### What changed (and why)
+- **Diagnosed as the bigger problem**: `BillsView` listed every bill unconditionally with no month concept at all (unlike Payments/Income, which already had month/year dropdowns), and `GoalsView` never passed `start_date` to the linked bill it auto-creates. Fixing only the second half would have had nowhere to take effect.
+- **Bills gained a month/year `QComboBox`** (via `/interview` to pin the exact semantics first) — defaults to the current month, built from "interesting" months (today, one-time due months, yearly this/next-year due months, goal start/target months), filtering via `Bill.is_due_in`. A goal-specific gate lives in `BillsView` itself (cross-references `repositories/goals.py`) to hide a goal's bill until its `start_date` month — no schema change.
+- **Follow-up `/audit` pass** found no must-fix issues, 3 minor ones: documented the ascending-vs-Payments/Income's-descending month-picker sort choice, renamed an ambiguous `start` variable to `start_iso`, added a test for the previously-selected-month-vanishing fallback case.
+- **Real Windows CI (not local) caught `os.O_NOFOLLOW`** not existing on that platform — crashed `export_all_csv()`'s symlink-race guard with `AttributeError`. Fixed with a `getattr(os, "O_NOFOLLOW", 0)` fallback.
+- **New `qt-visual-verify` project skill** — screenshot-and-actually-look verification, distinct from `qt-smoke`'s functional-only checks; built via `/skill-suggestion` after the same hand-rolled pattern turned up in 9 of 11 recent sessions.
+- **`.claude/settings.local.json` added to the repo's own `.gitignore`** — previously excluded only via this machine's global git config; now any contributor gets the same exclusion without it.
+
+### Decisions
+- `start_date` kept off the `Bill` model entirely, per the user's explicit interview answers — the goal-bill gate lives in `BillsView` only.
+- Bills' month picker sorts oldest-first (unlike Payments/Income's newest-first) — accepted as-is, since Bills mixes past *and* future months.
+
+### Issues / surprises
+- This session also touched the separate NixOS repo (a `skill-upgrade` gotcha fix to `session-closer`'s transcript-cutoff detector, committed there as `2ed3644`) — unrelated to FinanceGuru's own history, noted here so it isn't mistaken for missing work.
+
+### Next session
+- No app-facing next steps opened this session — see `project-state.md`'s Next Steps for what's actually open.
+
+**Commits**: `1b96965..6fa44d3` (5 commits)
+
+---
+
 ## Session: 2026-08-02 — Month Filters, Sortable Headers, Income Redesign x2, Goals Start Date, Audit Fixes
 
 **Focus**: A day of feature requests handled back-to-back (month/year filters, sortable tables, Income model changes, Goals start date), closed out with a full `/audit` pass.
