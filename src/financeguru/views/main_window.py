@@ -101,7 +101,12 @@ class MainWindow(QMainWindow):
         for attr in self._MONTH_AWARE_ATTRS:
             view = getattr(self, attr)
             if hasattr(view, "data_changed"):
-                view.data_changed.connect(self._rebuild_month_list)
+                # `skip=view`: this rebuild is triggered by `view`'s OWN
+                # add/edit/delete handler, which has already refreshed itself
+                # under its current selection — see _rebuild_month_list's
+                # skip parameter for why re-driving it here would be a silent,
+                # unannounced second jump mid-handler.
+                view.data_changed.connect(lambda v=view: self._rebuild_month_list(skip=v))
 
         # Global month selector — a toolbar row above the tabs, always
         # visible regardless of which tab is active. Replaces the per-tab
@@ -272,7 +277,7 @@ class MainWindow(QMainWindow):
     # the global path opts out of that fallback via strict=True.
     _STRICT_ON_GLOBAL = ("_bills", "_goals")
 
-    def _rebuild_month_list(self) -> None:
+    def _rebuild_month_list(self, skip=None) -> None:
         """Recompute the global month list from every contributing tab.
 
         The union is cheap (a handful of small DB reads), so this runs on
@@ -281,6 +286,16 @@ class MainWindow(QMainWindow):
         selection actually changed, so a routine rebuild that leaves the
         current month/"All" selection intact doesn't force all eight
         consumer tabs to refresh for nothing.
+
+        Pass `skip` (a view instance) when this rebuild was triggered by that
+        view's own `data_changed` signal — its add/edit/delete handler has
+        already refreshed itself under whatever selection it already had, so
+        if the resulting month set no longer contains that selection and the
+        broadcast below picks a new one, re-driving `select_month`/
+        `select_all` on the SAME view here would silently override what its
+        own handler just rendered before that handler has even returned.
+        Mirrors `_on_notes_navigate`'s identical use of `skip` on
+        `_broadcast_month` to avoid redriving the tab it just navigated to.
         """
         previous_key = self._month_picker.currentData() if self._month_picker.count() else None
         keys: set[tuple[int, int]] = set()
@@ -291,7 +306,7 @@ class MainWindow(QMainWindow):
         _month_filter.populate_from_keys(self._month_picker, keys)
         new_key = self._month_picker.currentData()
         if new_key != previous_key:
-            self._broadcast_month(new_key)
+            self._broadcast_month(new_key, skip=skip)
 
     def _broadcast_month(self, key: tuple[int, int] | None, skip=None) -> None:
         """Push the global month/"All" selection to every tab it drives.

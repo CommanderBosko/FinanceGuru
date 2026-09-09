@@ -251,6 +251,55 @@ def test_data_changed_rebuilds_the_global_list_immediately(window):
     assert "March 2031" in _labels(window)
 
 
+def test_editing_a_bill_out_of_the_selected_month_does_not_redrive_that_same_tab(window, monkeypatch):
+    # Regression: _rebuild_month_list's broadcast (triggered by a view's own
+    # data_changed signal) used to hit every _MONTH_AWARE_ATTRS tab
+    # including the one whose own handler just fired the signal — so
+    # editing a bill out of the only month it was due in would silently
+    # call select_month()/select_all() on BillsView a SECOND time, mid
+    # _on_edit, overriding what _on_edit's own _refresh() had just
+    # rendered. skip=<originating view> (mirroring _on_notes_navigate's
+    # existing use of the same mechanism) fixes this.
+    from financeguru.views.bill_dialog import BillDialog
+
+    bill = Bill(name="New Roof", amount=Decimal("5000"), due_day=1,
+                due_month=3, due_year=2031, recurrence="one-time")
+    bill.id = bill_repo.add(bill)
+    window._bills.refresh()
+    window._rebuild_month_list()
+    _select(window, "March 2031")
+    assert window._bills._current_key == (2031, 3)
+    assert any(b.name == "New Roof" for b in window._bills._bills)
+
+    # Edit moves the bill's due month to April — "March 2031" stops being
+    # interesting to anything and vanishes from the global union.
+    edited = Bill(id=bill.id, name="New Roof", amount=Decimal("5000"), due_day=1,
+                   due_month=4, due_year=2031, recurrence="one-time")
+    monkeypatch.setattr(BillDialog, "exec", lambda self: True)
+    monkeypatch.setattr(BillDialog, "bill", lambda self: edited)
+
+    bills_calls = []
+    monkeypatch.setattr(type(window._bills), "select_month",
+                         lambda self, y, m, **kw: bills_calls.append(("select_month", y, m)))
+    monkeypatch.setattr(type(window._bills), "select_all",
+                         lambda self: bills_calls.append(("select_all",)))
+
+    window._bills._table.selectRow(0)
+    window._bills._on_edit()
+
+    # BillsView itself must NOT have been redriven by the broadcast its own
+    # edit triggered — _on_edit's own _refresh() (not select_month/
+    # select_all) is the only thing that touched it.
+    assert bills_calls == []
+    # Its _current_key is therefore untouched by this handler (still
+    # whatever it was — _on_edit doesn't change it, only _refresh()s).
+    assert window._bills._current_key == (2031, 3)
+    # The rest of the propagation still works: the toolbar itself DID move
+    # on (March 2031 is gone), and other tabs were driven to the new value.
+    assert window._month_picker.currentData() != (2031, 3)
+    assert window._payments._current_key == window._month_picker.currentData()
+
+
 def test_data_changed_is_wired_for_every_view_that_can_introduce_a_new_month(window):
     # Notes and Charts only ever *consume* the global selection (see
     # main_window.py's wiring comment) — they must NOT have data_changed
